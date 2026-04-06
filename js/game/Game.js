@@ -2,7 +2,8 @@
 // Entry point that wires up ECS world, systems, and game loop
 
 import { World } from '../ecs/World.js';
-import { COMP, PLAYER_SPAWNS, LEVELS, MAP_W, MAP_H, TILE_SIZE } from './Constants.js';
+import { COMP, MAP_W, MAP_H, TILE_SIZE } from './Constants.js';
+import { PLAYER_SPAWNS, LEVELS } from './Levels.js';
 import * as Components from './Components.js';
 import { createInputSystem, createKeyState, setupKeyListeners } from './systems/InputSystem.js';
 import { AISystem } from './systems/AISystem.js';
@@ -22,49 +23,24 @@ export class Game {
         canvas.width = MAP_W * TILE_SIZE * this.scale;
         canvas.height = MAP_H * TILE_SIZE * this.scale;
 
-        this.world = new World();
         this.keyState = createKeyState();
         this.cleanupFn = setupKeyListeners(this.keyState);
 
         this.currentLevel = 0;
         this.running = false;
         this.gameState = 'title'; // title, playing, gameover, victory, stageclear
-
-        this._init();
-    }
-
-    _init() {
-        // Setup systems (order groups related functionality but doesn't affect correctness)
-        this.world.addSystem(createInputSystem(this.keyState), 'InputSystem');
-        this.world.addSystem(AISystem, 'AISystem');
-        this.world.addSystem(MovementSystem, 'MovementSystem');
-        this.world.addSystem(ShootSystem, 'ShootSystem');
-        this.world.addSystem(CollisionSystem, 'CollisionSystem');
-        this.world.addSystem(DamageSystem, 'DamageSystem');
-        this.world.addSystem(StageSystem, 'StageSystem');
-        this.world.addSystem(createRenderSystem(this.ctx, this.scale), 'RenderSystem');
-
-        // Entity 1 = Stage/Manager entity (holds game state)
-        this.world.addComponent(1, COMP.STAGE, Components.createStage(1));
-        this.world.addComponent(1, COMP.PLAYER_DATA, {
-            lives: 3,
-            score: 0,
-            spawnIdx: 0,
-            respawnTimer: 0
-        });
     }
 
     startLevel(levelIdx = 0) {
         this.currentLevel = levelIdx;
-        this._resetWorld();
+        this._setupWorld();
         this.gameState = 'playing';
     }
 
-    _resetWorld() {
-        // Create new world to clear everything
+    _setupWorld() {
         this.world = new World();
 
-        // Re-add systems
+        // Add systems
         this.world.addSystem(createInputSystem(this.keyState), 'InputSystem');
         this.world.addSystem(AISystem, 'AISystem');
         this.world.addSystem(MovementSystem, 'MovementSystem');
@@ -76,7 +52,6 @@ export class Game {
 
         // Load level map
         const levelData = LEVELS[this.currentLevel % LEVELS.length];
-        // Deep copy the map so we can modify tiles
         const mapData = levelData.map(row => [...row]);
 
         // Stage entity (id=1)
@@ -168,7 +143,6 @@ export class Game {
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, W, H);
 
-        // Title
         ctx.fillStyle = '#FF4500';
         ctx.font = `bold ${32 * s}px monospace`;
         ctx.textAlign = 'center';
@@ -181,7 +155,6 @@ export class Game {
         // Draw a tank icon
         this._drawTitleTank(ctx, W / 2, H * 0.5, s);
 
-        // Instructions
         ctx.fillStyle = '#FFFFFF';
         ctx.font = `${10 * s}px monospace`;
         ctx.fillText('WASD / Arrow Keys: Move', W / 2, H * 0.7);

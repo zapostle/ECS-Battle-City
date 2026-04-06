@@ -104,41 +104,20 @@
         E (Entity) = Event &bull; C (Component) = Data Carrier &bull; S (System) = Pure Function
     </div>
 
-    <div id="error" style="display:none; color:red; position:absolute; top:10px; left:10px; background:white; padding:10px; z-index:1000;"></div>
-    
-    <script>
-        // Global error handler
-        window.addEventListener('error', function(e) {
-            console.error('Error:', e.message, 'at', e.filename, ':', e.lineno);
-            document.getElementById('error').innerHTML = 'Error: ' + e.message + '<br>at ' + e.filename + ':' + e.lineno;
-            document.getElementById('error').style.display = 'block';
-            e.preventDefault();
-            return true;
-        });
-    </script>
-    
     <script type="module">
-        try {
-            const { Game } = await import('./js/game/Game.js');
+        import { Game } from './js/game/Game.js';
 
-            const canvas = document.getElementById('gameCanvas');
-            const game = new Game(canvas);
+        const canvas = document.getElementById('gameCanvas');
+        const game = new Game(canvas);
 
-            // Handle Enter key for menu navigation
-            window.addEventListener('keydown', (e) => {
-                if (e.code === 'Enter') {
-                    e.preventDefault();
-                    game.handleKeyPress('Enter');
-                }
-            });
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Enter') {
+                e.preventDefault();
+                game.handleKeyPress('Enter');
+            }
+        });
 
-            // Start the game loop
-            game.run();
-        } catch (err) {
-            console.error('Module loading failed:', err);
-            document.getElementById('error').innerHTML = 'Module loading failed: ' + err.message;
-            document.getElementById('error').style.display = 'block';
-        }
+        game.run();
     </script>
 </body>
 </html>
