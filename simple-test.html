@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Simple Module Test</title>
+</head>
+<body>
+    <h1>Simple ES6 Module Test</h1>
+    <div id="output"></div>
+    
+    <script type="module">
+        try {
+            const module = await import('./simple-test.js');
+            console.log('Module imported:', module);
+            document.getElementById('output').innerHTML = 'Success! Module loaded: ' + module.test();
+        } catch (err) {
+            console.error('Import error:', err);
+            document.getElementById('output').innerHTML = 'Error: ' + err.message;
+        }
+    </script>
+</body>
+</html>
