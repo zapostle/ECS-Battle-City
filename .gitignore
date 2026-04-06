@@ -1,0 +1,17 @@
+# VS Code debug cache
+.vscode/edge-debug/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Dependencies
+node_modules/
+
+# Build
+dist/

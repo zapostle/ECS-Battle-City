@@ -16,22 +16,14 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":9000" ^| findstr "LISTENING
 )
 ping -n 2 127.0.0.1 >nul 2>&1
 
-:: Try python, then py launcher
-where python >nul 2>&1
+where node >nul 2>&1
 if %errorlevel% neq 0 (
-    where py >nul 2>&1
-    if %errorlevel% neq 0 (
-        echo [ERROR] Python not found! Please install Python.
-        pause
-        exit /b 1
-    )
-    echo [INFO] Starting server at http://localhost:9000 (using py)
-    echo [INFO] Press Ctrl+C to stop.
-    echo.
-    py serve.py
-) else (
-    echo [INFO] Starting server at http://localhost:9000
-    echo [INFO] Press Ctrl+C to stop.
-    echo.
-    python serve.py
+    echo [ERROR] Node.js not found! Please install Node.js.
+    pause
+    exit /b 1
 )
+
+echo [INFO] Starting server at http://localhost:9000
+echo [INFO] Press Ctrl+C to stop.
+echo.
+node serve.js
