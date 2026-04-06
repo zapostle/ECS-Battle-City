@@ -56,6 +56,8 @@ export function CollisionSystem(world) {
     // ---- 收集所有带有位置、碰撞体、坦克类型的实体 ----
     const tanks = [];
     for (const entityId of world.getEntitiesWithAll3(COMP.POSITION, COMP.COLLISION, COMP.TANK_TYPE)) {
+        // 跳过已标记销毁的实体
+        if (world.hasComponent(entityId, COMP.DESTROYED)) continue;
         const pos = world.getComponent(entityId, COMP.POSITION);
         const col = world.getComponent(entityId, COMP.COLLISION);
         const dir = world.getComponent(entityId, COMP.DIRECTION);

@@ -13,6 +13,9 @@ export function createInputSystem(keyState) {
         // 遍历所有拥有 PlayerInput 组件的实体（即玩家）
         for (const entityId of world.getEntitiesWith(COMP.PLAYER_INPUT)) {
             const input = world.getComponent(entityId, COMP.PLAYER_INPUT);
+            const prevDir = input.dir;  // 记录上一帧的方向，用于检测方向变化
+            const prevShoot = input.shoot;
+
             // 先重置每帧的输入状态
             input.dir = -1;       // -1 表示无方向输入（静止）
             input.shoot = false;
@@ -25,13 +28,28 @@ export function createInputSystem(keyState) {
 
             // 射击指令
             if (keyState.shoot) input.shoot = true;
+
+            // 方向名称映射表
+            const dirNames = { [-1]: '静止', [0]: '上↑', [1]: '右→', [2]: '下↓', [3]: '左←' };
+            const currDirName = dirNames[input.dir];
+            const prevDirName = dirNames[prevDir];
+
+            // 仅在输入发生变化时输出日志（避免刷屏）
+            if (prevDir !== input.dir || prevShoot !== input.shoot) {
+                console.log(
+                    `[InputSystem] 🎮 玩家输入变化 | ` +
+                    `方向: ${prevDirName} → ${currDirName} | ` +
+                    `射击: ${prevShoot ? '🔥' : '—'} → ${input.shoot ? '🔥' : '—'} | ` +
+                    `按键状态 [${keyState.up ? 'W' : '_'} ${keyState.down ? 'S' : '_'} ${keyState.left ? 'A' : '_'} ${keyState.right ? 'D' : '_'} ${keyState.shoot ? 'J' : '_'}]`
+                );
+            }
         }
     };
 }
 
 // 创建键盘状态对象（初始化所有按键为 false）
 export function createKeyState() {
-    return { up: false, down: false, left: false, right: true, shoot: false };
+    return { up: false, down: false, left: false, right: false, shoot: false };
 }
 
 // 设置键盘事件监听器，将按键映射到 keyState 对象

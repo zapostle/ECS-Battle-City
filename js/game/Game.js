@@ -12,6 +12,7 @@ import { World } from '../ecs/World.js';
 import { COMP, MAP_W, MAP_H, TILE_SIZE } from './Constants.js';
 import { PLAYER_SPAWNS, LEVELS } from './Levels.js';
 import * as Components from './Components.js';
+import { EntityMonitor } from './EntityMonitor.js';
 import { createInputSystem, createKeyState, setupKeyListeners } from './systems/InputSystem.js';
 import { AISystem } from './systems/AISystem.js';
 import { MovementSystem } from './systems/MovementSystem.js';
@@ -93,12 +94,19 @@ export class Game {
         this.world.addComponent(2, COMP.VELOCITY, Components.createVelocity());                      // 速度
         this.world.addComponent(2, COMP.COLLISION, Components.createCollision(7, 7));                // 碰撞体
         this.world.addComponent(2, COMP.TANK_TYPE, Components.createTankType('player', 'player'));   // 坦克类型
-        this.world.addComponent(2, COMP.HP, Components.createHP(1));                                // HP：1血即死
+        this.world.addComponent(2, COMP.HP, Components.createHP(1));                                  // HP：1血即死（原版设定）
         this.world.addComponent(2, COMP.SHOOT_COOLDOWN, Components.createShootCooldown(0, 20));      // 射击冷却20帧
         this.world.addComponent(2, COMP.PLAYER_INPUT, Components.createPlayerInput());               // 输入接收器
         this.world.addComponent(2, COMP.RENDER, Components.createRender('tank', 'player', 1));       // 渲染信息
         this.world.addComponent(2, COMP.SPAWN_PROTECT, Components.createSpawnProtect(120));          // 出生保护2秒
         this.world.addComponent(2, COMP.SCORE, Components.createScore());                            // 分数记录
+
+        // ---- 启动玩家实体监控 ----
+        const playerMonitor = new EntityMonitor(2, '玩家坦克');
+        this.world.registerMonitor(playerMonitor);
+        playerMonitor.start();
+        // 暴露到 window 供控制台手动操作: window.playerMonitor.exportLog() 等
+        window.__playerMonitor = playerMonitor;
     }
 
     // ====== 每帧更新（游戏循环核心）======
@@ -297,6 +305,13 @@ export class Game {
                 const stage = this.world.getComponent(1, COMP.STAGE);
                 const nextLevel = stage ? stage.level : this.currentLevel + 1;
                 this.startLevel(nextLevel);      // 进入下一关
+            }
+        }
+        if (code === 'KeyL') {
+            // 按 L 键导出实体监控日志文件
+            if (window.__playerMonitor) {
+                window.__playerMonitor.printStatus(this.world);
+                window.__playerMonitor.exportLog();
             }
         }
     }

@@ -115,6 +115,10 @@
                 e.preventDefault();
                 game.handleKeyPress('Enter');
             }
+            if (e.code === 'KeyL') {
+                e.preventDefault();
+                game.handleKeyPress('KeyL');
+            }
         });
 
         game.run();

@@ -16,17 +16,34 @@ export function MovementSystem(world) {
 
         if (!pos || !dir || !col) continue;
 
+        // 跳过已标记销毁的实体（防止死亡后继续移动/穿墙）
+        if (world.hasComponent(entityId, COMP.DESTROYED)) continue;
+
         // ---- 判断该坦克是否应该移动 ----
         let shouldMove = false;
+        const prevDir = dir.dir;  // 记录上一帧方向，用于检测变化
         const input = world.getComponent(entityId, COMP.PLAYER_INPUT);  // 检查是否有玩家输入
         const aiCtrl = world.getComponent(entityId, COMP.AI_CTRL);      // 检查是否是AI敌人
+
+        // 方向名称映射
+        const dirNames = { [0]: '上↑', [1]: '右→', [2]: '下↓', [3]: '左←' };
+        const isPlayer = tankType && tankType.type === 'player';
+        const tag = isPlayer ? '🟡玩家' : `👾敌人#${entityId}`;
 
         if (input && input.dir >= 0) {
             shouldMove = true;
             dir.dir = input.dir;  // 使用玩家输入的方向
+            // 玩家移动方向变化日志
+            if (prevDir !== dir.dir) {
+                console.log(`[MovementSystem] ${tag} 移动倾向 | 来源: 键盘输入 | 方向: ${dirNames[prevDir]} → ${dirNames[dir.dir]} | 位置: (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})`);
+            }
         } else if (aiCtrl) {
             shouldMove = true;
             dir.dir = aiCtrl.moveDir;  // 使用AI决策的方向
+            // AI移动方向变化日志
+            if (prevDir !== dir.dir) {
+                console.log(`[MovementSystem] ${tag} 移动倾向 | 来源: AI决策(${aiCtrl.behavior}) | 方向: ${dirNames[prevDir]} → ${dirNames[dir.dir]} | 思考倒计时: ${aiCtrl.thinkTimer}帧 | 位置: (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})`);
+            }
         }
 
         if (!shouldMove) continue;

@@ -10,7 +10,7 @@
 // =============================================================================
 
 import { COMP } from '../Constants.js';
-import { ENEMY_SPAWNS, PLAYER_SPAWNS } from './Levels.js';
+import { ENEMY_SPAWNS, PLAYER_SPAWNS } from '../Levels.js';
 import {
     createPosition, createDirection, createVelocity, createCollision,
     createTankType, createHP, createShootCooldown, createAIController,
@@ -27,6 +27,7 @@ export function StageSystem(world) {
         stage.spawnTimer--;
         if (stage.spawnTimer <= 0) {
             stage.spawnTimer = 180;  // 每180帧（约3秒）尝试生成一个敌人
+            console.log(`[StageSystem] 🎯 敌人生成 | 已生成: ${stage.enemiesSpawned}/${stage.maxEnemies} | 场上: ${stage.enemyCount}`);
             spawnEnemy(world, stage);
         }
     }
@@ -43,6 +44,7 @@ export function StageSystem(world) {
             }
         }
         if (!enemiesAlive && stage.enemyCount <= 0) {
+            console.log(`[StageSystem] 🏆 胜利条件达成! | 已生成敌人: ${stage.enemiesSpawned}/${stage.maxEnemies} | 场上存活: ${stage.enemyCount} | 关卡: ${stage.level}`);
             stage.state = 'victory';  // 所有敌人已被消灭 → 胜利！
         }
     }
@@ -52,6 +54,7 @@ export function StageSystem(world) {
     if (playerData && playerData.respawnTimer > 0) {
         playerData.respawnTimer--;
         if (playerData.respawnTimer <= 0) {
+            console.log(`[StageSystem] ❤️ 玩家复活 | 剩余生命: ${playerData.lives} | 累计分数: ${playerData.score}`);
             respawnPlayer(world, playerData);  // 倒计时结束 → 复活玩家
         }
     }
@@ -61,6 +64,7 @@ export function StageSystem(world) {
         const sp = world.getComponent(entityId, COMP.SPAWN_PROTECT);
         sp.frames--;
         if (sp.frames <= 0) {
+            console.log(`[StageSystem] 🛡️ 出生保护结束 | 实体ID: ${entityId}`);
             world.removeComponent(entityId, COMP.SPAWN_PROTECT);  // 保护时间结束 → 移除组件
         }
     }
@@ -118,6 +122,7 @@ function spawnEnemy(world, stage) {
     // 更新关卡统计
     stage.enemiesSpawned++;  // 已生成总数+1
     stage.enemyCount++;      // 当前场上敌人数+1
+    console.log(`[StageSystem] 👾 敌人已生成! | ID: ${enemyId} | 颜色: ${colorKey} | 出生点: (${spawn.x}, ${spawn.y})`);
 }
 
 // ====== 内部函数：复活玩家坦克 ======

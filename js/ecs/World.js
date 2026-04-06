@@ -12,6 +12,9 @@ export class World {
         this.systems = [];              // 系统列表: 存储所有已注册的游戏系统函数
         this._nextEntityId = 1;        // 下一个可用的实体ID（自增计数器）
         this._toRemove = [];           // 延迟实体销毁队列（帧末统一清理，避免迭代中修改集合的问题）
+        this._monitors = [];            // 实体监控器列表（每帧自动执行对比）
+        this._nextEntityId = 1;        // 下一个可用的实体ID（自增计数器）
+        this._toRemove = [];           // 延迟实体销毁队列（帧末统一清理，避免迭代中修改集合的问题）
     }
 
     // 创建新实体，返回唯一的实体ID
@@ -63,8 +66,25 @@ export class World {
         for (const sys of this.systems) {
             sys.fn(this);  // 将 world 自身传入每个系统
         }
+        // 执行所有实体监控器（在系统执行后、销毁处理前）
+        for (const monitor of this._monitors) {
+            if (monitor.enabled) {
+                monitor.tick(this);
+            }
+        }
         // 处理延迟实体销毁（在所有系统执行完毕后统一清理）
         this._processRemovals();
+    }
+
+    // 注册一个 EntityMonitor 监控器到世界容器
+    registerMonitor(monitor) {
+        this._monitors.push(monitor);
+    }
+
+    // 移除指定的监控器
+    unregisterMonitor(monitor) {
+        const idx = this._monitors.indexOf(monitor);
+        if (idx >= 0) this._monitors.splice(idx, 1);
     }
 
     // 延迟销毁实体（加入待移除队列，安全地在迭代期间调用）
