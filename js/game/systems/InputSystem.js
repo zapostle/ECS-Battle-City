@@ -17,7 +17,7 @@ export function createInputSystem(keyState) {
             const prevShoot = input.shoot;
 
             // 先重置每帧的输入状态
-            input.dir = -1;       // -1 表示无方向输入（静止）
+            input.dir = DIR.NONE;       // -1 表示无方向输入（静止）
             input.shoot = false;
 
             // 根据按键状态确定移动方向（优先级: 上 > 下 > 左 > 右）

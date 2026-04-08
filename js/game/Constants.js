@@ -22,6 +22,7 @@ export const BULLET_SPEED = 3;  // 子弹飞行速度
 
 // 方向枚举：0=上, 1=右, 2=下, 3=左
 export const DIR = {
+    NONE: -1,
     UP: 0,
     RIGHT: 1,
     DOWN: 2,

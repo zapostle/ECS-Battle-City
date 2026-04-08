@@ -9,7 +9,8 @@
 import { COMP } from '../Constants.js';
 
 export function DamageSystem(world) {
-    const stageComp = world.getComponent(1, COMP.STAGE);
+    const stageId = world.findEntity(COMP.STAGE);
+    const stageComp = stageId ? world.getComponent(stageId, COMP.STAGE) : null;
     if (!stageComp) return;
 
     // 遍历所有同时拥有 HP 和 DamageInfo 组件的实体（即刚受到伤害的实体）
@@ -50,7 +51,8 @@ export function DamageSystem(world) {
 
             // 判断死亡的是否是玩家 → 扣命或游戏结束
             if (tankType && tankType.type === 'player') {
-                const playerData = world.getComponent(1, COMP.PLAYER_DATA);
+                const stageId = world.findEntity(COMP.STAGE);
+                const playerData = stageId ? world.getComponent(stageId, COMP.PLAYER_DATA) : null;
                 if (playerData) {
                     playerData.lives--;  // 扣除一条命
                     // 保存当前分数（复活时恢复）

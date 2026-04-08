@@ -22,7 +22,8 @@ export function createRenderSystem(ctx, scale = 2) {
         ctx.fillRect(0, 0, W, H);
 
         // ==================== 1. 绘制地图瓦片 ====================
-        const stageComp = world.getComponent(1, COMP.STAGE);
+        const stageId = world.findEntity(COMP.STAGE);
+        const stageComp = stageId ? world.getComponent(stageId, COMP.STAGE) : null;
         if (stageComp && stageComp.mapData) {
             const mapData = stageComp.mapData;
             for (let y = 0; y < MAP_H; y++) {
@@ -300,9 +301,11 @@ function drawExplosion(ctx, pos, explosion, scale) {
 
 // ====== 绘制 HUD 状态栏（底部2行区域）======
 function drawHUD(ctx, world, canvasW, scale) {
-    const stageComp = world.getComponent(1, COMP.STAGE);
-    const playerData = world.getComponent(1, COMP.PLAYER_DATA);
-    const score = world.getComponent(2, COMP.SCORE);
+    const stageId = world.findEntity(COMP.STAGE);
+    const stageComp = stageId ? world.getComponent(stageId, COMP.STAGE) : null;
+    const playerData = stageId ? world.getComponent(stageId, COMP.PLAYER_DATA) : null;
+    const playerId = world.findEntity(COMP.PLAYER_INPUT);
+    const score = playerId ? world.getComponent(playerId, COMP.SCORE) : null;
 
     if (!stageComp) return;
 

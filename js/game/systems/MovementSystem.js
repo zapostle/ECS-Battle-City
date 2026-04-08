@@ -1,56 +1,69 @@
 // =============================================================================
 // 移动系统 - 应用速度/方向到位置
 // Natural Order: 消费 InputSystem/AISystem 产生的方向数据，更新 Position 组件
-// 设计策略: 先移动，后由 CollisionSystem 回滚碰撞 — 符合 FC 坦克大战的物理手感
+// 设计策略:
+//   Direction = 纯朝向（渲染用，默认向上）
+//   是否移动 = 由 InputSystem.dir / AI_CTRL.moveDir 显式驱动
+//   无输入时 shouldMove=false → 坦克不动，即使 Direction 仍为"向上"
 // =============================================================================
 
-import { COMP, DIR, DIR_VEC, PLAYER_SPEED, ENEMY_SPEED } from '../Constants.js';
+import { COMP, DIR_VEC, PLAYER_SPEED, ENEMY_SPEED } from '../Constants.js';
 
 export function MovementSystem(world) {
-    // 遍历所有坦克类型实体（包括玩家和敌人）
+    const dirNames = { [0]: '上↑', [1]: '右→', [2]: '下↓', [3]: '左←' };
+
     for (const entityId of world.getEntitiesWith(COMP.TANK_TYPE)) {
-        const pos = world.getComponent(entityId, COMP.POSITION);      // 位置
-        const dir = world.getComponent(entityId, COMP.DIRECTION);    // 方向
-        const col = world.getComponent(entityId, COMP.COLLISION);    // 碰撞体
-        const tankType = world.getComponent(entityId, COMP.TANK_TYPE);// 坦克类型
+        const pos = world.getComponent(entityId, COMP.POSITION);
+        const dir = world.getComponent(entityId, COMP.DIRECTION);
+        const col = world.getComponent(entityId, COMP.COLLISION);
+        const tankType = world.getComponent(entityId, COMP.TANK_TYPE);
 
         if (!pos || !dir || !col) continue;
 
-        // 跳过已标记销毁的实体（防止死亡后继续移动/穿墙）
+        // 跳过已标记销毁的实体
         if (world.hasComponent(entityId, COMP.DESTROYED)) continue;
 
-        // ---- 判断该坦克是否应该移动 ----
+        // ---- 判断移动意图：只看输入/AI，不看 Direction 默认值 ----
         let shouldMove = false;
-        const prevDir = dir.dir;  // 记录上一帧方向，用于检测变化
-        const input = world.getComponent(entityId, COMP.PLAYER_INPUT);  // 检查是否有玩家输入
-        const aiCtrl = world.getComponent(entityId, COMP.AI_CTRL);      // 检查是否是AI敌人
+        let moveDir;  // 本帧实际移动方向（可能不同于渲染朝向）
 
-        // 方向名称映射
-        const dirNames = { [0]: '上↑', [1]: '右→', [2]: '下↓', [3]: '左←' };
+        const input = world.getComponent(entityId, COMP.PLAYER_INPUT);
+        const aiCtrl = world.getComponent(entityId, COMP.AI_CTRL);
+
         const isPlayer = tankType && tankType.type === 'player';
         const tag = isPlayer ? '🟡玩家' : `👾敌人#${entityId}`;
 
         if (input && input.dir >= 0) {
+            // 玩家有按键输入 → 移动 + 更新朝向
             shouldMove = true;
-            dir.dir = input.dir;  // 使用玩家输入的方向
-            // 玩家移动方向变化日志
-            if (prevDir !== dir.dir) {
-                console.log(`[MovementSystem] ${tag} 移动倾向 | 来源: 键盘输入 | 方向: ${dirNames[prevDir]} → ${dirNames[dir.dir]} | 位置: (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})`);
+            moveDir = input.dir;
+            if (dir.dir !== moveDir) {
+                console.log(`[MovementSystem] ${tag} 朝向变化: ${dirNames[dir.dir]} → ${dirNames[moveDir]} | (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})`);
             }
+            dir.dir = moveDir;  // 同步朝向到移动方向
         } else if (aiCtrl) {
+            // AI 有决策 → 移动 + 更新朝向
             shouldMove = true;
-            dir.dir = aiCtrl.moveDir;  // 使用AI决策的方向
-            // AI移动方向变化日志
-            if (prevDir !== dir.dir) {
-                console.log(`[MovementSystem] ${tag} 移动倾向 | 来源: AI决策(${aiCtrl.behavior}) | 方向: ${dirNames[prevDir]} → ${dirNames[dir.dir]} | 思考倒计时: ${aiCtrl.thinkTimer}帧 | 位置: (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})`);
+            moveDir = aiCtrl.moveDir;
+            if (dir.dir !== moveDir) {
+                console.log(`[MovementSystem] ${tag} 朝向变化(AI): ${dirNames[dir.dir]} → ${dirNames[moveDir]} | 思考倒计时: ${aiCtrl.thinkTimer}帧`);
             }
+            dir.dir = moveDir;
         }
+        // else: 无输入、无AI → shouldMove 保持 false → 不移动
+        //       此时 Direction 保持原值（如默认向上），仅影响渲染
 
         if (!shouldMove) continue;
 
-        // 根据坦克类型选择速度
+        if (entityId === world.findEntity(COMP.PLAYER_INPUT))
+        {
+            let i = 0;
+            i = i + 1;
+        }
+
+        // ---- 执行位移 ----
         const speed = tankType.type === 'player' ? PLAYER_SPEED : ENEMY_SPEED;
-        const vec = DIR_VEC[dir.dir];  // 获取方向向量 [dx, dy]
+        const vec = DIR_VEC[moveDir];
         const dx = vec[0];
         const dy = vec[1];
 
@@ -59,31 +72,27 @@ export function MovementSystem(world) {
         const prevY = pos.y;
 
         // ---- FC风格网格对齐: 转向时逐渐对齐到瓦片网格中心 ----
-        // 这模拟了经典坦克大战中坦克"卡"在网格上的手感
         if (dx !== 0) {
-            // 水平移动时，Y轴逐渐对齐到最近的瓦片行中心
             const tileY = Math.round((pos.y - 8) / 16);
             const targetY = tileY * 16 + 8;
             const diff = targetY - pos.y;
             if (Math.abs(diff) > 0.5) {
-                pos.y += Math.sign(diff) * Math.min(Math.abs(diff), speed * 0.8);  // 缓慢吸附
+                pos.y += Math.sign(diff) * Math.min(Math.abs(diff), speed * 0.8);
             }
         }
         if (dy !== 0) {
-            // 垂直移动时，X轴逐渐对齐到最近的瓦片列中心
             const tileX = Math.round((pos.x - 8) / 16);
             const targetX = tileX * 16 + 8;
             const diff = targetX - pos.x;
             if (Math.abs(diff) > 0.5) {
-                pos.x += Math.sign(diff) * Math.min(Math.abs(diff), speed * 0.8);  // 缓慢吸附
+                pos.x += Math.sign(diff) * Math.min(Math.abs(diff), speed * 0.8);
             }
         }
 
-        // ---- 应用位移 ----
         pos.x += dx * speed;
         pos.y += dy * speed;
 
-        // ---- 边界限制：防止移出地图范围 ----
+        // 边界限制
         pos.x = Math.max(col.halfW, Math.min(26 * 16 - col.halfW, pos.x));
         pos.y = Math.max(col.halfH, Math.min(26 * 16 - col.halfW, pos.y));
     }

@@ -8,7 +8,8 @@ import { COMP, DIR, DIR_VEC, BULLET_SPEED, TILE } from '../Constants.js';
 import { createPosition, createDirection, createVelocity, createCollision, createBullet, createRender, createAnimation } from '../Components.js';
 
 export function ShootSystem(world) {
-    const mapData = world.getComponent(1, COMP.STAGE)?.mapData;
+    const stageId = world.findEntity(COMP.STAGE);
+    const mapData = stageId ? world.getComponent(stageId, COMP.STAGE)?.mapData : null;
     if (!mapData) return;
 
     // ==================== 处理玩家的射击请求 ====================
@@ -50,7 +51,7 @@ export function ShootSystem(world) {
         if (!pos || !dir || !bullet) continue;
 
         // 沿子弹方向以 BULLET_SPEED 速度移动
-        const vec = DIR_VEC[dir.dir];
+        const vec = DIR_VEC[dir.dir] || [0, 0];  // 防御 dir=-1 等无效值
         pos.x += vec[0] * BULLET_SPEED;
         pos.y += vec[1] * BULLET_SPEED;
 
@@ -69,7 +70,7 @@ export function ShootSystem(world) {
 
 // 内部函数：在指定位置生成一颗子弹实体
 function spawnBullet(world, ownerId, dir, x, y) {
-    const vec = DIR_VEC[dir];
+    const vec = DIR_VEC[dir] || [0, 0];  // 防御无效方向值
     const bulletId = world.createEntity();  // 创建新的子弹实体
 
     // 计算子弹出生偏移：在坦克炮管顶端（前方10单位处）生成

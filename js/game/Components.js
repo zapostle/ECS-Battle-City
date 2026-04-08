@@ -12,6 +12,7 @@ export function createPosition(x, y) {
 }
 
 // 方向组件: 存储当前朝向 (0=上, 1=右, 2=下, 3=左)
+// 注意: 这是纯朝向（用于渲染），不控制是否移动
 export function createDirection(dir = 0) {
     return { dir };
 }

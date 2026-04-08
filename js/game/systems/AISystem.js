@@ -9,7 +9,8 @@ import { TILE_BRICK, TILE_STEEL, TILE_WATER, TILE_EMPTY, TILE_ICE } from '../Con
 
 export function AISystem(world) {
     // 读取关卡状态，非 playing 状态时不处理
-    const stageComp = world.getComponent(1, COMP.STAGE);
+    const stageId = world.findEntity(COMP.STAGE);
+    const stageComp = stageId ? world.getComponent(stageId, COMP.STAGE) : null;
     if (!stageComp || stageComp.state !== 'playing') return;
 
     // 遍历所有拥有 AI 控制器的实体（即所有敌人坦克）
@@ -31,9 +32,9 @@ export function AISystem(world) {
             ai.moveDir = Math.floor(Math.random() * 4);
 
             // --- 追踪行为：30%概率朝向玩家方向移动 ---
-            const playerInput = world.getComponent(2, COMP.PLAYER_INPUT); // 通过玩家实体(id=2)获取引用
-            if (playerInput && Math.random() < 0.3) {
-                const playerPos = world.getComponent(2, COMP.POSITION);
+            const playerId = world.findEntity(COMP.PLAYER_INPUT);
+            if (playerId && Math.random() < 0.3) {
+                const playerPos = world.getComponent(playerId, COMP.POSITION);
                 if (playerPos) {
                     // 计算到玩家的方向向量
                     const dx = playerPos.x - pos.x;

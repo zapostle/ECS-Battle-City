@@ -27,6 +27,7 @@ export class EntityMonitor {
         this.logBuffer = [];            // 日志缓冲区
         this.prevSnapshot = null;       // 上一帧的组件快照
         this.maxBufferSize = 10000;     // 最大日志条数（防内存溢出）
+        this.ignoreComponents = new Set();  // 组件黑名单（被忽略的组件名不打印）
 
         // 统计数据
         this.stats = {
@@ -35,6 +36,7 @@ export class EntityMonitor {
             adds: 0,
             removes: 0,
             modifies: 0,
+            filtered: 0,               // 被过滤掉的变更数
             startTime: null,
         };
     }
@@ -56,9 +58,54 @@ export class EntityMonitor {
         if (!this.enabled) return;
         this.enabled = false;
         const duration = ((Date.now() - this.stats.startTime) / 1000).toFixed(1);
-        this._log('SYSTEM', '⏹️', `监控已停止 | 运行时长: ${duration}s | 总帧数: ${this.stats.totalTicks} | 总变更数: ${this.stats.totalChanges}`);
-        console.log(`%c[EntityMonitor] %c⏹️ 监控已停止 | 时长: ${duration}s | 帧数: ${this.stats.totalTicks} | 变更: ${this.stats.totalChanges}`,
+        this._log('SYSTEM', '⏹️', `监控已停止 | 运行时长: ${duration}s | 总帧数: ${this.stats.totalTicks} | 总变更数: ${this.stats.totalChanges} | 过滤: ${this.stats.filtered}`);
+        console.log(`%c[EntityMonitor] %c⏹️ 监控已停止 | 时长: ${duration}s | 帧数: ${this.stats.totalTicks} | 变更: ${this.stats.totalChanges} (过滤: ${this.stats.filtered})`,
             'color:#888', 'color:#FF6B6B;font-weight:bold');
+    }
+
+    // ==================== 过滤配置 ====================
+
+    /**
+     * 添加要忽略的组件名（支持多个）
+     * 被忽略的组件仍会被快照记录，但不会打印日志
+     * @param  {...string} names - 组件名称列表，如: 'SpawnProtect', 'Position'
+     * @returns {this} 支持链式调用
+     *
+     * @example
+     * monitor.ignore('SpawnProtect', 'Position')  // 静默这两个组件的所有变更
+     * monitor.unignore('Position')                // 重新启用 Position 的日志
+     */
+    ignore(...names) {
+        for (const name of names) {
+            this.ignoreComponents.add(name);
+        }
+        if (names.length > 0) {
+            console.log(`%c[EntityMonitor] %c🔇 已静默组件: [${names.join(', ')}]`, 'color:#888', 'color:#888;font-style:italic');
+        }
+        return this;
+    }
+
+    /**
+     * 取消对指定组件的忽略
+     * @param  {...string} names - 组件名称列表
+     * @returns {this} 支持链式调用
+     */
+    unignore(...names) {
+        for (const name of names) {
+            this.ignoreComponents.delete(name);
+        }
+        if (names.length > 0) {
+            console.log(`%c[EntityMonitor] %c🔊 取消静默: [${names.join(', ')}]`, 'color:#888', 'color:#4CAF50');
+        }
+        return this;
+    }
+
+    /** 清空忽略列表（恢复全部组件日志） */
+    clearIgnore() {
+        const count = this.ignoreComponents.size;
+        this.ignoreComponents.clear();
+        console.log(`%c[EntityMonitor] %c🔓 已清除所有过滤 (${count}个组件恢复监控)`, 'color:#888', 'color:#4CAF50');
+        return this;
     }
 
     /**
@@ -91,14 +138,19 @@ export class EntityMonitor {
         for (const key of currKeys) {
             if (!prevKeys.has(key)) {
                 hasChange = true;
-                this.stats.adds++;
-                this.stats.totalChanges++;
-                this._log('ADD', '+', `新增组件 [${key}]`, currentSnap[key]);
-                console.log(
-                    `%c[EntityMonitor] %c+ ADD    %c[${key}]`,
-                    'color:#888', 'color:#32CD32;font-weight:bold', 'color:#2E8B57',
-                    currentSnap[key]
-                );
+                if (this.ignoreComponents.has(key)) {
+                    this.stats.filtered++;
+                    this._log('ADD[F]', '+', `[静默] 新增 [${key}]`, currentSnap[key]);
+                } else {
+                    this.stats.adds++;
+                    this.stats.totalChanges++;
+                    this._log('ADD', '+', `新增组件 [${key}]`, currentSnap[key]);
+                    console.log(
+                        `%c[EntityMonitor] %c+ ADD    %c[${key}]`,
+                        'color:#888', 'color:#32CD32;font-weight:bold', 'color:#2E8B57',
+                        currentSnap[key]
+                    );
+                }
             }
         }
 
@@ -106,15 +158,20 @@ export class EntityMonitor {
         for (const key of prevKeys) {
             if (!currKeys.has(key)) {
                 hasChange = true;
-                this.stats.removes++;
-                this.stats.totalChanges++;
-                const oldData = this.prevSnapshot[key];
-                this._log('REMOVE', '-', `移除组件 [${key}]`, oldData);
-                console.log(
-                    `%c[EntityMonitor] %c- REMOVE %c[${key}]`,
-                    'color:#888', 'color:#FF4444;font-weight:bold', 'color:#AA0000',
-                    oldData
-                );
+                if (this.ignoreComponents.has(key)) {
+                    this.stats.filtered++;
+                    this._log('REMOVE[F]', '-', `[静默] 移除 [${key}]`, this.prevSnapshot[key]);
+                } else {
+                    this.stats.removes++;
+                    this.stats.totalChanges++;
+                    const oldData = this.prevSnapshot[key];
+                    this._log('REMOVE', '-', `移除组件 [${key}]`, oldData);
+                    console.log(
+                        `%c[EntityMonitor] %c- REMOVE %c[${key}]`,
+                        'color:#888', 'color:#FF4444;font-weight:bold', 'color:#AA0000',
+                        oldData
+                    );
+                }
             }
         }
 
@@ -125,15 +182,19 @@ export class EntityMonitor {
                 const currVal = currentSnap[key];
                 if (!this._deepEqual(prevVal, currVal)) {
                     hasChange = true;
-                    this.stats.modifies++;
-                    this.stats.totalChanges++;
-                    this._log('MODIFY', '~', `组件变更 [${key}]`, { from: prevVal, to: currVal });
-                    console.log(
-                        `%c[EntityMonitor] %c~ MODIFY %c[${key}]`,
-                        'color:#888', 'color:#FFA500;font-weight:bold', 'color:#CC8400',
-                        '\n  旧值:', prevVal,
-                        '\n  新值:', currVal
-                    );
+                    if (this.ignoreComponents.has(key)) {
+                        this.stats.filtered++;
+                    } else {
+                        this.stats.modifies++;
+                        this.stats.totalChanges++;
+                        this._log('MODIFY', '~', `组件变更 [${key}]`, { from: prevVal, to: currVal });
+                        console.log(
+                            `%c[EntityMonitor] %c~ MODIFY %c[${key}]`,
+                            'color:#888', 'color:#FFA500;font-weight:bold', 'color:#CC8400',
+                            '\n  旧值:', prevVal,
+                            '\n  新值:', currVal
+                        );
+                    }
                 }
             }
         }

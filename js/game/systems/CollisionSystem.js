@@ -49,7 +49,8 @@ function collidesWithMap(mapData, cx, cy, halfW, halfH, isBullet = false) {
 
 // ====== 碰撞系统主函数 ======
 export function CollisionSystem(world) {
-    const stage = world.getComponent(1, COMP.STAGE);
+    const stageId = world.findEntity(COMP.STAGE);
+    const stage = stageId ? world.getComponent(stageId, COMP.STAGE) : null;
     if (!stage) return;
     const mapData = stage.mapData;
 

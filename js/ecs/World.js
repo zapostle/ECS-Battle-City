@@ -10,11 +10,9 @@ export class World {
     constructor() {
         this.componentSets = new Map(); // 组件集合映射: typeName(组件类型名) -> SparseSet(稀疏集合)
         this.systems = [];              // 系统列表: 存储所有已注册的游戏系统函数
-        this._nextEntityId = 1;        // 下一个可用的实体ID（自增计数器）
+        this._nextEntityId = 1;          // 下一个可用的实体ID（自增计数器）
         this._toRemove = [];           // 延迟实体销毁队列（帧末统一清理，避免迭代中修改集合的问题）
         this._monitors = [];            // 实体监控器列表（每帧自动执行对比）
-        this._nextEntityId = 1;        // 下一个可用的实体ID（自增计数器）
-        this._toRemove = [];           // 延迟实体销毁队列（帧末统一清理，避免迭代中修改集合的问题）
     }
 
     // 创建新实体，返回唯一的实体ID
@@ -111,6 +109,14 @@ export class World {
         const set = this.componentSets.get(typeName);
         if (!set) return;
         yield* set.ids();
+    }
+
+    // 查找拥有指定组件的第一个实体（用于舞台/玩家等单例实体的动态ID获取）
+    findEntity(typeName) {
+        for (const id of this.getEntitiesWith(typeName)) {
+            return id;
+        }
+        return null;
     }
 
     // 查询同时拥有两种组件的实体（优化：遍历较小的集合）

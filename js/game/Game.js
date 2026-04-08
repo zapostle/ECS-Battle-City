@@ -64,13 +64,13 @@ export class Game {
         this.world.addSystem(StageSystem, 'StageSystem');                         // 7. 关卡系统 - 生成/清理
         this.world.addSystem(createRenderSystem(this.ctx, this.scale), 'RenderSystem'); // 8. 渲染系统 - 绘制画面
 
-        // 加载当前关卡的地图数据（深拷贝避免修改原始数据）
+        // ---- 创建舞台/全局实体 ----
+        // 存储关卡状态、玩家数据等全局信息
+        this.stageEntityId = this.world.createEntity();
         const levelData = LEVELS[this.currentLevel % LEVELS.length];
         const mapData = levelData.map(row => [...row]);
 
-        // ---- 创建舞台/全局实体 (entityId = 1) ----
-        // 存储关卡状态、玩家数据等全局信息
-        this.world.addComponent(1, COMP.STAGE, {
+        this.world.addComponent(this.stageEntityId, COMP.STAGE, {
             level: this.currentLevel + 1,
             state: 'playing',
             enemyCount: 0,
@@ -80,29 +80,31 @@ export class Game {
             mapData
         });
         // 玩家持久数据（跨复活保留）：生命数、总分数等
-        this.world.addComponent(1, COMP.PLAYER_DATA, {
+        this.world.addComponent(this.stageEntityId, COMP.PLAYER_DATA, {
             lives: 3,             // 初始生命数
             score: 0,
             spawnIdx: 0,
             respawnTimer: 0       // 复活倒计时
         });
 
-        // ---- 创建玩家坦克实体 (entityId = 2) ----
+        // ---- 创建玩家坦克实体（ID 由 World 自动分配）----
+        this.playerEntityId = this.world.createEntity();  // 不再硬编码为 2！
         const spawn = PLAYER_SPAWNS[0];
-        this.world.addComponent(2, COMP.POSITION, Components.createPosition(spawn.x, spawn.y));      // 位置
-        this.world.addComponent(2, COMP.DIRECTION, Components.createDirection(0));                    // 方向：默认向上
-        this.world.addComponent(2, COMP.VELOCITY, Components.createVelocity());                      // 速度
-        this.world.addComponent(2, COMP.COLLISION, Components.createCollision(7, 7));                // 碰撞体
-        this.world.addComponent(2, COMP.TANK_TYPE, Components.createTankType('player', 'player'));   // 坦克类型
-        this.world.addComponent(2, COMP.HP, Components.createHP(1));                                  // HP：1血即死（原版设定）
-        this.world.addComponent(2, COMP.SHOOT_COOLDOWN, Components.createShootCooldown(0, 20));      // 射击冷却20帧
-        this.world.addComponent(2, COMP.PLAYER_INPUT, Components.createPlayerInput());               // 输入接收器
-        this.world.addComponent(2, COMP.RENDER, Components.createRender('tank', 'player', 1));       // 渲染信息
-        this.world.addComponent(2, COMP.SPAWN_PROTECT, Components.createSpawnProtect(120));          // 出生保护2秒
-        this.world.addComponent(2, COMP.SCORE, Components.createScore());                            // 分数记录
+        this.world.addComponent(this.playerEntityId, COMP.POSITION, Components.createPosition(spawn.x, spawn.y));
+        this.world.addComponent(this.playerEntityId, COMP.DIRECTION, Components.createDirection(0));                    // 方向：默认向上（纯朝向）
+        this.world.addComponent(this.playerEntityId, COMP.VELOCITY, Components.createVelocity());
+        this.world.addComponent(this.playerEntityId, COMP.COLLISION, Components.createCollision(7, 7));
+        this.world.addComponent(this.playerEntityId, COMP.TANK_TYPE, Components.createTankType('player', 'player'));
+        this.world.addComponent(this.playerEntityId, COMP.HP, Components.createHP(1));                                  // HP：1血即死
+        this.world.addComponent(this.playerEntityId, COMP.SHOOT_COOLDOWN, Components.createShootCooldown(0, 20));
+        this.world.addComponent(this.playerEntityId, COMP.PLAYER_INPUT, Components.createPlayerInput());
+        this.world.addComponent(this.playerEntityId, COMP.RENDER, Components.createRender('tank', 'player', 1));
+        this.world.addComponent(this.playerEntityId, COMP.SPAWN_PROTECT, Components.createSpawnProtect(120));
+        this.world.addComponent(this.playerEntityId, COMP.SCORE, Components.createScore());
 
         // ---- 启动玩家实体监控 ----
-        const playerMonitor = new EntityMonitor(2, '玩家坦克');
+        const playerMonitor = new EntityMonitor(this.playerEntityId, '玩家坦克');
+        playerMonitor.ignore('SpawnProtect');  // 静默高频低信息量的保护倒计时
         this.world.registerMonitor(playerMonitor);
         playerMonitor.start();
         // 暴露到 window 供控制台手动操作: window.playerMonitor.exportLog() 等
@@ -129,7 +131,7 @@ export class Game {
         this.world.tick();
 
         // 检查关卡系统的状态变化，同步到游戏层面
-        const stage = this.world.getComponent(1, COMP.STAGE);
+        const stage = this.world.getComponent(this.stageEntityId, COMP.STAGE);
         if (stage) {
             if (stage.state === 'gameover') {
                 this.gameState = 'gameover';           // 基地被毁或玩家无命 → 游戏结束
@@ -243,7 +245,7 @@ export class Game {
         ctx.fillText('GAME OVER', W / 2, H * 0.4);
 
         // 显示最终得分
-        const score = this.world.getComponent(2, COMP.SCORE);
+        const score = this.world.getComponent(this.playerEntityId, COMP.SCORE);
         if (score) {
             ctx.fillStyle = '#FFFFFF';
             ctx.font = `${14 * s}px monospace`;
@@ -277,7 +279,7 @@ export class Game {
         ctx.fillText('STAGE CLEAR!', W / 2, H * 0.4);
 
         // 显示完成关卡数
-        const stage = this.world.getComponent(1, COMP.STAGE);
+        const stage = this.world.getComponent(this.stageEntityId, COMP.STAGE);
         if (stage) {
             ctx.fillStyle = '#FFFFFF';
             ctx.font = `${14 * s}px monospace`;
@@ -302,7 +304,7 @@ export class Game {
             } else if (this.gameState === 'gameover') {
                 this.startLevel(0);              // 从游戏结束重新开始
             } else if (this.gameState === 'stageclear') {
-                const stage = this.world.getComponent(1, COMP.STAGE);
+                const stage = this.world.getComponent(this.stageEntityId, COMP.STAGE);
                 const nextLevel = stage ? stage.level : this.currentLevel + 1;
                 this.startLevel(nextLevel);      // 进入下一关
             }
