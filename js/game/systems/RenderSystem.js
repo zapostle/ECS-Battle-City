@@ -8,13 +8,13 @@
 //   4. 绘制 HUD 状态栏（分数/生命/敌人数量/关卡数）
 // =============================================================================
 
-import { COMP, TILE_SIZE, MAP_W, MAP_H, DIR, DIR_VEC, TANK_COLORS, TILE_EMPTY, TILE_BRICK, TILE_STEEL, TILE_WATER, TILE_GRASS, TILE_ICE, TILE_BASE, TILE_BASE_DEAD } from '../Constants.js';
+import { COMP, TILE_SIZE, MAP_W, MAP_H, CANVAS_EXTRA_ROWS, DIR, DIR_VEC, TANK_COLORS, TILE_EMPTY, TILE_BRICK, TILE_STEEL, TILE_WATER, TILE_GRASS, TILE_ICE, TILE_BASE, TILE_BASE_DEAD } from '../Constants.js';
 
 // 创建渲染系统（工厂函数，接收 canvas 2D上下文和缩放倍数）
 export function createRenderSystem(ctx, scale = 2) {
     return function RenderSystem(world) {
         const W = MAP_W * TILE_SIZE * scale;   // 画布实际像素宽度
-        const H = MAP_H * TILE_SIZE * scale;   // 画布实际像素高度
+        const H = MAP_H * TILE_SIZE * scale;   // 地图区域高度（不含HUD）
         const ts = TILE_SIZE * scale;          // 缩放后的瓦片尺寸(32px)
 
         // 清屏：填充黑色背景
@@ -299,7 +299,7 @@ function drawExplosion(ctx, pos, explosion, scale) {
     }
 }
 
-// ====== 绘制 HUD 状态栏（底部2行区域）======
+// ====== 绘制 HUD 状态栏（地图区域下方的独立区域）======
 function drawHUD(ctx, world, canvasW, scale) {
     const stageId = world.findEntity(COMP.STAGE);
     const stageComp = stageId ? world.getComponent(stageId, COMP.STAGE) : null;
@@ -309,8 +309,9 @@ function drawHUD(ctx, world, canvasW, scale) {
 
     if (!stageComp) return;
 
-    // 状态栏区域起始 Y 坐标（第24行开始）
-    const barY = 24 * 16 * scale;
+    // 状态栏区域起始 Y 坐标：在地图区域正下方
+    // 地图占 MAP_H(26) 行，HUD 从第 26 行开始，占 CANVAS_EXTRA_ROWS(2) 行
+    const barY = MAP_H * TILE_SIZE * scale;
 
     // 绘制状态栏背景
     ctx.fillStyle = '#333333';

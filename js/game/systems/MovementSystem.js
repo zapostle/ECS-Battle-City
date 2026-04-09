@@ -55,21 +55,16 @@ export function MovementSystem(world) {
 
         if (!shouldMove) continue;
 
-        if (entityId === world.findEntity(COMP.PLAYER_INPUT))
-        {
-            let i = 0;
-            i = i + 1;
-        }
-
         // ---- 执行位移 ----
         const speed = tankType.type === 'player' ? PLAYER_SPEED : ENEMY_SPEED;
         const vec = DIR_VEC[moveDir];
         const dx = vec[0];
         const dy = vec[1];
 
-        // 保存当前位置（供 CollisionSystem 碰撞回滚使用）
-        const prevX = pos.x;
-        const prevY = pos.y;
+        // 保存当前位置到组件（供 CollisionSystem 碰撞回滚使用）
+        // 必须存到 pos 对象上，不能存局部变量——否则 CollisionSystem 读不到旧值
+        pos.prevX = pos.x;
+        pos.prevY = pos.y;
 
         // ---- FC风格网格对齐: 转向时逐渐对齐到瓦片网格中心 ----
         if (dx !== 0) {

@@ -9,7 +9,7 @@
 // =============================================================================
 
 import { World } from '../ecs/World.js';
-import { COMP, MAP_W, MAP_H, TILE_SIZE } from './Constants.js';
+import { COMP, MAP_W, MAP_H, TILE_SIZE, CANVAS_TOTAL_H } from './Constants.js';
 import { PLAYER_SPAWNS, LEVELS } from './Levels.js';
 import * as Components from './Components.js';
 import { EntityMonitor } from './EntityMonitor.js';
@@ -28,9 +28,9 @@ export class Game {
         this.ctx = canvas.getContext('2d');  // 获取 D 渲染上下文
         this.scale = 2;                      // 渲染缩放倍数（2x像素化风格）
 
-        // 设置 Canvas 实际像素尺寸
+        // 设置 Canvas 实际像素尺寸（地图区 + HUD状态栏）
         canvas.width = MAP_W * TILE_SIZE * this.scale;   // 832px
-        canvas.height = MAP_H * TILE_SIZE * this.scale;   // 832px
+        canvas.height = CANVAS_TOTAL_H * this.scale;      // 896px (28行*16*scale)
 
         // 初始化键盘输入状态管理
         this.keyState = createKeyState();

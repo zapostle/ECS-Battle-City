@@ -63,7 +63,7 @@ export function CollisionSystem(world) {
         const col = world.getComponent(entityId, COMP.COLLISION);
         const dir = world.getComponent(entityId, COMP.DIRECTION);
         if (!pos || !col || !dir) continue;
-        tanks.push({ id: entityId, pos, col, dir, prevX: pos.x, prevY: pos.y });  // 记录旧位置用于回滚
+        tanks.push({ id: entityId, pos, col, dir, prevX: pos.prevX ?? pos.x, prevY: pos.prevY ?? pos.y });  // 读取 MovementSystem 存储的旧位置
     }
 
     // ==================== 1. 坦克 vs 地图碰撞检测 ====================

@@ -6,9 +6,13 @@
 export const TILE = 16;          // 瓦片单位大小（每个瓦片 = 16x16 游戏单位）
 export const TILE_SIZE = 16;     // 显示时每个瓦片的像素尺寸
 export const MAP_W = 26;         // 地图宽度（以瓦片为单位，共26格）
-export const MAP_H = 26;         // 地图高度（包含底部2行状态栏区域）
+export const MAP_H = 26;         // 地图高度（行0~25，包含基地区域）
 export const GAME_W = MAP_W * TILE;  // 游戏区域实际宽度 = 416 像素
 export const GAME_H = MAP_H * TILE;  // 游戏区域实际高度 = 416 像素
+// Canvas 总高度 = 地图高度 + HUD 状态栏额外空间（2行瓦片）
+// 确保基地(行24~25)完全可见，HUD 绘制在地图下方
+export const CANVAS_EXTRA_ROWS = 2;   // HUD 额外占用的行数
+export const CANVAS_TOTAL_H = (MAP_H + CANVAS_EXTRA_ROWS) * TILE;  // 总画布高度 = 28*16 = 448px
 
 // 实体碰撞尺寸（半宽/半高）
 export const PLAYER_SIZE = 14;   // 玩家坦克尺寸
