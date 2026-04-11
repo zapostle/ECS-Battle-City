@@ -118,8 +118,3 @@ export function createPowerUp(powerType) {
 export function createScore() {
     return { value: 0, combo: 0 };
 }
-
-// 关卡/舞台状态组件: 管理关卡进度、敌人数目、游戏阶段等全局状态
-export function createStage(level) {
-    return { level, state: 'playing', enemyCount: 0, enemiesSpawned: 0, maxEnemies: 20, spawnTimer: 0 };
-}

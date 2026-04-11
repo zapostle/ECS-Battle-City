@@ -1,18 +1,30 @@
 import { SparseSet } from './SparseSet.js';
+import { Environment } from './Environment.js';
 
 // =============================================================================
 // Natural Order ECS - World（世界容器）
 // 作为 ECS 架构的核心中枢，管理所有组件集合和系统
 // 负责实体的创建、销毁、组件的增删查、系统的注册与执行
+// 集成 Environment（环境容器）作为全局数据/服务的访问点
 // =============================================================================
 
 export class World {
-    constructor() {
+    /**
+     * @param {Object} [config] - 可选的游戏配置表（传入 Environment）
+     */
+    constructor(config) {
         this.componentSets = new Map(); // 组件集合映射: typeName(组件类型名) -> SparseSet(稀疏集合)
         this.systems = [];              // 系统列表: 存储所有已注册的游戏系统函数
         this._nextEntityId = 1;          // 下一个可用的实体ID（自增计数器）
         this._toRemove = [];           // 延迟实体销毁队列（帧末统一清理，避免迭代中修改集合的问题）
         this._monitors = [];            // 实体监控器列表（每帧自动执行对比）
+
+        // ==================== 环境容器（Resources / Singleton Component）====================
+        // 存储不属于任何特定实体、但所有系统可见的全局信息：
+        //   - config: 只读配置表（速度/尺寸/颜色等静态参数）
+        //   - 运行时状态: 关卡进度、玩家数据、地图数据
+        //   - 服务访问点: 随机数生成器等
+        this.env = new Environment(config);
     }
 
     // 创建新实体，返回唯一的实体ID
@@ -59,10 +71,12 @@ export class World {
         this.systems.push({ fn: systemFn, name });
     }
 
-    // 执行一帧：按顺序运行所有已注册的系统，然后处理延迟销毁
+    // 执行一帧：按顺序运行所有已注册的系统（传入 world + env），然后处理延迟销毁
     tick() {
+        // 更新环境帧计数器（供系统通过 env.frameCount 访问）
+        this.env.frameCount++;
         for (const sys of this.systems) {
-            sys.fn(this);  // 将 world 自身传入每个系统
+            sys.fn(this, this.env);  // ★ 规范签名: fn(world, env)
         }
         // 执行所有实体监控器（在系统执行后、销毁处理前）
         for (const monitor of this._monitors) {

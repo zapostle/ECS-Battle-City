@@ -7,9 +7,15 @@
 //   无输入时 shouldMove=false → 坦克不动，即使 Direction 仍为"向上"
 // =============================================================================
 
-import { COMP, DIR_VEC, PLAYER_SPEED, ENEMY_SPEED } from '../Constants.js';
+import { COMP } from '../Constants.js';
 
-export function MovementSystem(world) {
+export function MovementSystem(world, _env) {  // ★ 规范签名: (world, env)
+    const env = world.env;
+    // ★ DIR_VEC 通过 env.config 访问 (Rule 6)
+    const DIR_VEC = env.config.dirVec;
+    const TILE = env.config.map.TILE;
+    const MAP_W = env.config.map.MAP_W;
+    const MAP_H = env.config.map.MAP_H;
     const dirNames = { [0]: '上↑', [1]: '右→', [2]: '下↓', [3]: '左←' };
 
     for (const entityId of world.getEntitiesWith(COMP.TANK_TYPE)) {
@@ -50,45 +56,45 @@ export function MovementSystem(world) {
             }
             dir.dir = moveDir;
         }
-        // else: 无输入、无AI → shouldMove 保持 false → 不移动
-        //       此时 Direction 保持原值（如默认向上），仅影响渲染
 
         if (!shouldMove) continue;
 
-        // ---- 执行位移 ----
-        const speed = tankType.type === 'player' ? PLAYER_SPEED : ENEMY_SPEED;
+        // ---- 执行位移（从环境配置表读取速度）----
+        const cfgSpeed = isPlayer ? env.config.speed.PLAYER : env.config.speed.ENEMY;
         const vec = DIR_VEC[moveDir];
         const dx = vec[0];
         const dy = vec[1];
 
         // 保存当前位置到组件（供 CollisionSystem 碰撞回滚使用）
-        // 必须存到 pos 对象上，不能存局部变量——否则 CollisionSystem 读不到旧值
         pos.prevX = pos.x;
         pos.prevY = pos.y;
 
         // ---- FC风格网格对齐: 转向时逐渐对齐到瓦片网格中心 ----
+        const halfTile = TILE / 2;
         if (dx !== 0) {
-            const tileY = Math.round((pos.y - 8) / 16);
-            const targetY = tileY * 16 + 8;
+            const tileY = Math.round((pos.y - halfTile) / TILE);
+            const targetY = tileY * TILE + halfTile;
             const diff = targetY - pos.y;
             if (Math.abs(diff) > 0.5) {
-                pos.y += Math.sign(diff) * Math.min(Math.abs(diff), speed * 0.8);
+                pos.y += Math.sign(diff) * Math.min(Math.abs(diff), cfgSpeed * 0.8);
             }
         }
         if (dy !== 0) {
-            const tileX = Math.round((pos.x - 8) / 16);
-            const targetX = tileX * 16 + 8;
+            const tileX = Math.round((pos.x - halfTile) / TILE);
+            const targetX = tileX * TILE + halfTile;
             const diff = targetX - pos.x;
             if (Math.abs(diff) > 0.5) {
-                pos.x += Math.sign(diff) * Math.min(Math.abs(diff), speed * 0.8);
+                pos.x += Math.sign(diff) * Math.min(Math.abs(diff), cfgSpeed * 0.8);
             }
         }
 
-        pos.x += dx * speed;
-        pos.y += dy * speed;
+        pos.x += dx * cfgSpeed;
+        pos.y += dy * cfgSpeed;
 
-        // 边界限制
-        pos.x = Math.max(col.halfW, Math.min(26 * 16 - col.halfW, pos.x));
-        pos.y = Math.max(col.halfH, Math.min(26 * 16 - col.halfW, pos.y));
+        // 边界限制（从环境配置读取地图尺寸）
+        const gameW = MAP_W * TILE;
+        const gameH = MAP_H * TILE;
+        pos.x = Math.max(col.halfW, Math.min(gameW - col.halfW, pos.x));
+        pos.y = Math.max(col.halfH, Math.min(gameH - col.halfH, pos.y));
     }
 }

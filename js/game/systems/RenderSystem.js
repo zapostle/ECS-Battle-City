@@ -1,36 +1,39 @@
 // =============================================================================
 // 渲染系统 - 将所有游戏实体绘制到 Canvas 画布上
 // Natural Order: 作为最后一个执行的系统，读取所有 Position + Render 组件输出到屏幕
-// 职责:
-//   1. 绘制地图瓦片背景
-//   2. 按 zIndex 排序绘制所有实体（坦克、子弹、爆炸）
-//   3. 草地层覆盖绘制（模拟FC坦克大战的遮挡效果）
-//   4. 绘制 HUD 状态栏（分数/生命/敌人数量/关卡数）
+// 通过 Environment 访问地图数据和配置参数
 // =============================================================================
 
-import { COMP, TILE_SIZE, MAP_W, MAP_H, CANVAS_EXTRA_ROWS, DIR, DIR_VEC, TANK_COLORS, TILE_EMPTY, TILE_BRICK, TILE_STEEL, TILE_WATER, TILE_GRASS, TILE_ICE, TILE_BASE, TILE_BASE_DEAD } from '../Constants.js';
+import { COMP } from '../Constants.js';
+import { TANK_COLORS, TILE_TYPE } from '../GameConfig.js';
+
+// ====== 瓦片类型本地常量映射（从 TILE_TYPE 提取，避免运行时查找）======
+const _TT = TILE_TYPE;  // 短别名，减少代码冗余
+
+const { EMPTY, GRASS } = _TT;
 
 // 创建渲染系统（工厂函数，接收 canvas 2D上下文和缩放倍数）
 export function createRenderSystem(ctx, scale = 2) {
-    return function RenderSystem(world) {
-        const W = MAP_W * TILE_SIZE * scale;   // 画布实际像素宽度
-        const H = MAP_H * TILE_SIZE * scale;   // 地图区域高度（不含HUD）
-        const ts = TILE_SIZE * scale;          // 缩放后的瓦片尺寸(32px)
+    return function RenderSystem(world, _env) {  // ★ 规范签名: (world, env)
+        const env = world.env;
+        const TILE_SIZE = env.config.map.TILE_SIZE;
+        const MAP_W = env.config.map.MAP_W;
+        const MAP_H = env.config.map.MAP_H;
+        const W = MAP_W * TILE_SIZE * scale;
+        const H = MAP_H * TILE_SIZE * scale;
+        const ts = TILE_SIZE * scale;
 
-        // 清屏：填充黑色背景
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, W, H);
 
         // ==================== 1. 绘制地图瓦片 ====================
-        const stageId = world.findEntity(COMP.STAGE);
-        const stageComp = stageId ? world.getComponent(stageId, COMP.STAGE) : null;
-        if (stageComp && stageComp.mapData) {
-            const mapData = stageComp.mapData;
+        if (env && env.mapData) {
+            const mapData = env.mapData;
             for (let y = 0; y < MAP_H; y++) {
                 for (let x = 0; x < MAP_W; x++) {
                     const tile = mapData[y][x];
-                    if (tile === TILE_EMPTY) continue;  // 空地不绘制（显示黑色背景）
-                    drawTile(ctx, x * ts, y * ts, ts, tile);  // 绘制瓦片
+                    if (tile === EMPTY) continue;
+                    drawTile(ctx, x * ts, y * ts, ts, tile);
                 }
             }
         }
@@ -42,59 +45,56 @@ export function createRenderSystem(ctx, scale = 2) {
             const render = world.getComponent(entityId, COMP.RENDER);
             if (!pos || !render) continue;
 
-            // 收集实体及其关联的渲染相关组件
             renderList.push({
                 entityId, pos, render,
-                dir: world.getComponent(entityId, COMP.DIRECTION),           // 方向（坦克旋转用）
-                tankType: world.getComponent(entityId, COMP.TANK_TYPE),       // 坦克类型（取颜色）
-                explosion: world.getComponent(entityId, COMP.EXPLOSION),      // 爆炸效果参数
-                anim: world.getComponent(entityId, COMP.ANIMATION),           // 动画状态（预留）
-                spawnProtect: world.getComponent(entityId, COMP.SPAWN_PROTECT), // 出生保护效果
+                dir: world.getComponent(entityId, COMP.DIRECTION),
+                tankType: world.getComponent(entityId, COMP.TANK_TYPE),
+                explosion: world.getComponent(entityId, COMP.EXPLOSION),
+                anim: world.getComponent(entityId, COMP.ANIMATION),
+                spawnProtect: world.getComponent(entityId, COMP.SPAWN_PROTECT),
             });
         }
 
-        // 按 zIndex 排序（小的先绘制 = 底层，大的后绘制 = 顶层）
         renderList.sort((a, b) => (a.render.zIndex || 0) - (b.render.zIndex || 0));
 
-        // ==================== 3. 预收集草地块位置（稍后覆盖在坦克上层）====================
-        // FC 原版特性：草地会遮盖坦克，增加战术深度
+        // ==================== 3. 预收集草地块位置 ====================
         const grassTiles = [];
-        if (stageComp && stageComp.mapData) {
-            const mapData = stageComp.mapData;
+        if (env && env.mapData) {
+            const mapData = env.mapData;
             for (let y = 0; y < MAP_H; y++) {
                 for (let x = 0; x < MAP_W; x++) {
-                    if (mapData[y][x] === TILE_GRASS) {
+                    if (mapData[y][x] === GRASS) {
                         grassTiles.push({ x: x * ts, y: y * ts });
                     }
                 }
             }
         }
 
-        // ==================== 4. 绘制地面层实体（坦克、子弹、爆炸）====================
+        // ==================== 4. 绘制地面层实体 ====================
         for (const item of renderList) {
             if (item.render.type === 'tank') {
-                drawTank(ctx, item, scale);              // 绘制坦克
+                drawTank(ctx, item, scale);
             } else if (item.render.type === 'bullet') {
-                drawBullet(ctx, item.pos, item.dir, scale);  // 绘制子弹
+                drawBullet(ctx, item.pos, item.dir, scale);
             } else if (item.render.type === 'explosion') {
-                drawExplosion(ctx, item.pos, item.explosion, scale);  // 绘制爆炸
+                drawExplosion(ctx, item.pos, item.explosion, scale);
             }
         }
 
-        // ==================== 5. 绘制草地层（覆盖在坦克上方）====================
+        // ==================== 5. 绘制草地层 ====================
         for (const gt of grassTiles) {
-            drawTile(ctx, gt.x, gt.y, ts, TILE_GRASS);
+            drawTile(ctx, gt.x, gt.y, ts, GRASS);
         }
 
         // ==================== 6. 绘制 HUD 状态栏 ====================
-        drawHUD(ctx, world, W, scale);
+        drawHUD(ctx, env, world, W, scale);
     };
 }
 
 // ====== 绘制单个地图瓦片 ======
 function drawTile(ctx, x, y, size, tileType) {
     switch (tileType) {
-        case TILE_BRICK:
+        case _TT.BRICK:
             // ---- 砖墙: 棕色底 + 深色砖缝纹理 ----
             ctx.fillStyle = '#8B4513';       // 深棕色基底
             ctx.fillRect(x, y, size, size);
@@ -116,7 +116,7 @@ function drawTile(ctx, x, y, size, tileType) {
             ctx.stroke();
             break;
 
-        case TILE_STEEL:
+        case _TT.STEEL:
             // ---- 钢墙: 银灰色金属质感 + 十字高光 ----
             ctx.fillStyle = '#A0A0A0';       // 基底灰
             ctx.fillRect(x, y, size, size);
@@ -127,7 +127,7 @@ function drawTile(ctx, x, y, size, tileType) {
             ctx.fillRect(x, y + size / 2 - 1, size, 2);
             break;
 
-        case TILE_WATER:
+        case _TT.WATER:
             // ---- 水域: 深蓝色 + 波纹线条动画效果 ----
             ctx.fillStyle = '#1a3a5c';       // 深蓝色水面
             ctx.fillRect(x, y, size, size);
@@ -138,7 +138,7 @@ function drawTile(ctx, x, y, size, tileType) {
             }
             break;
 
-        case TILE_GRASS:
+        case _TT.GRASS:
             // ---- 草地: 深绿色 + 竖条纹纹理 ----
             ctx.fillStyle = '#2d5a1e';       // 深绿底层
             ctx.fillRect(x, y, size, size);
@@ -149,7 +149,7 @@ function drawTile(ctx, x, y, size, tileType) {
             }
             break;
 
-        case TILE_ICE:
+        case _TT.ICE:
             // ---- 冰面: 浅蓝色 + 方块高光（光滑反光感）----
             ctx.fillStyle = '#b0d4f1';       // 冰蓝底色
             ctx.fillRect(x, y, size, size);
@@ -159,7 +159,7 @@ function drawTile(ctx, x, y, size, tileType) {
             ctx.fillRect(x + size / 2 + 1, y + size / 2 + 1, size / 2 - 3, size / 2 - 3);
             break;
 
-        case TILE_BASE:
+        case _TT.BASE:
             // ---- 基地(老鹰): 金色图标表示存活状态 ----
             ctx.fillStyle = '#555555';       // 深灰基座
             ctx.fillRect(x, y, size, size);
@@ -169,7 +169,7 @@ function drawTile(ctx, x, y, size, tileType) {
             ctx.fillRect(x + size * 0.35, y + size * 0.35, size * 0.3, size * 0.3);
             break;
 
-        case TILE_BASE_DEAD:
+        case _TT.BASE_DEAD:
             // ---- 已毁基地: 暗灰色表示被摧毁 ----
             ctx.fillStyle = '#555555';       // 基座不变
             ctx.fillRect(x, y, size, size);
@@ -300,53 +300,44 @@ function drawExplosion(ctx, pos, explosion, scale) {
 }
 
 // ====== 绘制 HUD 状态栏（地图区域下方的独立区域）======
-function drawHUD(ctx, world, canvasW, scale) {
-    const stageId = world.findEntity(COMP.STAGE);
-    const stageComp = stageId ? world.getComponent(stageId, COMP.STAGE) : null;
-    const playerData = stageId ? world.getComponent(stageId, COMP.PLAYER_DATA) : null;
-    const playerId = world.findEntity(COMP.PLAYER_INPUT);
+function drawHUD(ctx, env, world, canvasW, scale) {
+    if (!env) return;
+
+    const MAP_H = env.config.map.MAP_H;
+    const TILE_SIZE = env.config.map.TILE_SIZE;
+    const playerId = (function() {
+        for (const id of world.getEntitiesWith(COMP.PLAYER_INPUT)) return id;
+        return null;
+    })();
     const score = playerId ? world.getComponent(playerId, COMP.SCORE) : null;
 
-    if (!stageComp) return;
-
-    // 状态栏区域起始 Y 坐标：在地图区域正下方
-    // 地图占 MAP_H(26) 行，HUD 从第 26 行开始，占 CANVAS_EXTRA_ROWS(2) 行
+    // 状态栏区域起始 Y 坐标
     const barY = MAP_H * TILE_SIZE * scale;
 
-    // 绘制状态栏背景
     ctx.fillStyle = '#333333';
     ctx.fillRect(0, barY, canvasW, 2 * 16 * scale);
 
-    // 分隔线（橙红色顶部边框）
     ctx.fillStyle = '#FF4500';
     ctx.fillRect(0, barY, canvasW, 2);
 
-    // 设置字体
     ctx.fillStyle = '#FFFFFF';
     ctx.font = `${12 * scale}px monospace`;
 
-    // ---- 显示分数（左侧上方）----
     if (score) {
         ctx.fillText(`SCORE: ${String(score.value).padStart(6, '0')}`, 10 * scale, barY + 14 * scale);
     }
 
-    // ---- 显示玩家生命数（左下方）----
-    if (playerData) {
-        ctx.fillStyle = '#FFD700';  // 金色 "P1" 标签
+    if (env.playerLives != null) {
+        ctx.fillStyle = '#FFD700';
         ctx.fillText('P1', 10 * scale, barY + 30 * scale);
-        // 用小方块表示剩余生命（每个生命一个小金色方块）
-        for (let i = 0; i < playerData.lives; i++) {
+        for (let i = 0; i < env.playerLives; i++) {
             ctx.fillRect((10 + 3 + i * 3) * scale, barY + 22 * scale, 2.5 * scale, 2.5 * scale);
         }
     }
 
-    // ---- 显示剩余敌人数（右上方）----
     ctx.fillStyle = '#FFFFFF';
-    const remaining = stageComp.enemyCount;
-    ctx.fillText(`ENEMY: ${remaining}`, 200 * scale, barY + 14 * scale);
-
-    // ---- 显示当前关卡数（右下方）----
-    ctx.fillText(`STAGE ${stageComp.level}`, 200 * scale, barY + 30 * scale);
+    ctx.fillText(`ENEMY: ${env.enemyCount}`, 200 * scale, barY + 14 * scale);
+    ctx.fillText(`STAGE ${env.level}`, 200 * scale, barY + 30 * scale);
 }
 
 // ====== 辅助函数：将颜色变暗（用于绘制坦克不同部位）======

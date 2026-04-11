@@ -1,17 +1,10 @@
 // =============================================================================
 // 关卡系统 - 管理游戏生命周期事件
 // Natural Order: 通过组件的添加和移除来管理实体生命周期
-//
-// 重要设计决策：
-//   不再硬编码任何实体ID（如 stage=1, player=2）
-//   所有实体引用通过组件查询动态获取：
-//     舞台实体 → 拥有 COMP.STAGE 的唯一实体
-//     玩家实体 → 拥有 COMP.PLAYER_INPUT 的唯一实体
-//   这样即使 World 的 _nextEntityId 从任意值开始也不会冲突
+// 现在通过 Environment（环境容器）访问全局状态，不再依赖 stage 单例实体
 // =============================================================================
 
 import { COMP } from '../Constants.js';
-import { ENEMY_SPAWNS, PLAYER_SPAWNS } from '../Levels.js';
 import {
     createPosition, createDirection, createVelocity, createCollision,
     createTankType, createHP, createShootCooldown, createAIController,
@@ -19,8 +12,7 @@ import {
 } from '../Components.js';
 
 /**
- * 查找拥有指定组件的唯一实体（用于舞台/玩家等单例实体）
- * 如果找到多个则返回第一个，未找到返回 null
+ * 查找拥有指定组件的唯一实体（用于玩家等单例实体）
  */
 function findUniqueEntity(world, compType) {
     for (const id of world.getEntitiesWith(compType)) {
@@ -29,26 +21,24 @@ function findUniqueEntity(world, compType) {
     return null;
 }
 
-export function StageSystem(world) {
-    // ---- 动态获取舞台和玩家实体ID ----
-    const stageEntityId = findUniqueEntity(world, COMP.STAGE);
+export function StageSystem(world, _env) {  // ★ 规范签名: (world, env)
+    const env = world.env;
+    if (!env || env.state !== 'playing') return;
+
     const playerEntityId = findUniqueEntity(world, COMP.PLAYER_INPUT);
 
-    const stage = stageEntityId ? world.getComponent(stageEntityId, COMP.STAGE) : null;
-    if (!stage || stage.state !== 'playing') return;
-
     // ==================== 1. 敌人生成逻辑 ====================
-    if (stage.enemiesSpawned < stage.maxEnemies && stage.enemyCount < 4) {
-        stage.spawnTimer--;
-        if (stage.spawnTimer <= 0) {
-            stage.spawnTimer = 180;
-            console.log(`[StageSystem] 🎯 敌人生成 | 已生成: ${stage.enemiesSpawned}/${stage.maxEnemies} | 场上: ${stage.enemyCount}`);
-            spawnEnemy(world, stage);
+    if (env.enemiesSpawned < env.maxEnemies && env.enemyCount < env.config.combat.MAX_ENEMIES_ON_SCREEN) {
+        env.spawnTimer--;
+        if (env.spawnTimer <= 0) {
+            env.spawnTimer = env.config.combat.ENEMY_SPAWN_INTERVAL;  // ★ 通过 env.config 访问 (Rule 6)
+            console.log(`[StageSystem] 🎯 敌人生成 | 已生成: ${env.enemiesSpawned}/${env.maxEnemies} | 场上: ${env.enemyCount}`);
+            spawnEnemy(world, env);
         }
     }
 
     // ==================== 2. 胜利条件判定 ====================
-    if (stage.enemiesSpawned >= stage.maxEnemies) {
+    if (env.enemiesSpawned >= env.maxEnemies) {
         let enemiesAlive = false;
         for (const eid of world.getEntitiesWith(COMP.AI_CTRL)) {
             if (world.getComponent(eid, COMP.HP)) {
@@ -56,19 +46,18 @@ export function StageSystem(world) {
                 break;
             }
         }
-        if (!enemiesAlive && stage.enemyCount <= 0) {
-            console.log(`[StageSystem] 🏆 胜利条件达成! | 已生成敌人: ${stage.enemiesSpawned}/${stage.maxEnemies} | 关卡: ${stage.level}`);
-            stage.state = 'victory';
+        if (!enemiesAlive && env.enemyCount <= 0) {
+            console.log(`[StageSystem] 🏆 胜利条件达成! | 已生成敌人: ${env.enemiesSpawned}/${env.maxEnemies} | 关卡: ${env.level}`);
+            env.state = 'victory';  // ★ 通过环境修改全局状态
         }
     }
 
     // ==================== 3. 玩家复活逻辑 ====================
-    const playerData = stageEntityId ? world.getComponent(stageEntityId, COMP.PLAYER_DATA) : null;
-    if (playerData && playerData.respawnTimer > 0) {
-        playerData.respawnTimer--;
-        if (playerData.respawnTimer <= 0) {
-            console.log(`[StageSystem] ❤️ 玩家复活 | 剩余生命: ${playerData.lives} | 累计分数: ${playerData.score}`);
-            respawnPlayer(world, playerData);  // 倒计时结束 → 复活玩家
+    if (env.respawnTimer > 0) {
+        env.respawnTimer--;
+        if (env.respawnTimer <= 0) {
+            console.log(`[StageSystem] ❤️ 玩家复活 | 剩余生命: ${env.playerLives} | 累计分数: ${env.playerScore}`);
+            respawnPlayer(world, env);
         }
     }
 
@@ -98,11 +87,9 @@ export function StageSystem(world) {
     }
 
     // ==================== 7. 清理已标记销毁的实体 ====================
-    // 保护特殊实体（舞台+玩家）不被自动销毁，通过组件查询而非硬编码ID
     const toRemove = [];
     for (const entityId of world.getEntitiesWith(COMP.DESTROYED)) {
-        // 跳过舞台实体和玩家实体（它们有自己的销毁/复活逻辑）
-        if (entityId === stageEntityId || entityId === playerEntityId) continue;
+        if (entityId === playerEntityId) continue;  // 跳过玩家实体
         toRemove.push(entityId);
     }
     for (const id of toRemove) {
@@ -111,13 +98,17 @@ export function StageSystem(world) {
 }
 
 // ====== 内部函数：生成一个新的敌人坦克 ======
-function spawnEnemy(world, stage) {
-    const spawnIdx = stage.enemiesSpawned % ENEMY_SPAWNS.length;
-    const spawn = ENEMY_SPAWNS[spawnIdx];
+function spawnEnemy(world, env) {
+    const spawns = env.config.spawn.ENEMY;
+    const spawnIdx = env.enemiesSpawned % spawns.length;
+    const spawn = spawns[spawnIdx];
     const enemyId = world.createEntity();
 
     const colorKeys = ['enemy1', 'enemy2', 'enemy3', 'enemy4'];
-    const colorKey = colorKeys[stage.enemiesSpawned % colorKeys.length];
+    const colorKey = colorKeys[env.enemiesSpawned % colorKeys.length];
+
+    const enemyShootCd = env.config.combat.ENEMY_SHOOT_CD;
+    const enemyProtectFrames = env.config.combat.SPAWN_PROTECT_ENEMY;
 
     world.addComponent(enemyId, COMP.POSITION, createPosition(spawn.x, spawn.y));
     world.addComponent(enemyId, COMP.DIRECTION, createDirection(2));
@@ -125,55 +116,47 @@ function spawnEnemy(world, stage) {
     world.addComponent(enemyId, COMP.COLLISION, createCollision(7, 7));
     world.addComponent(enemyId, COMP.TANK_TYPE, createTankType('enemy', colorKey));
     world.addComponent(enemyId, COMP.HP, createHP(1));
-    world.addComponent(enemyId, COMP.SHOOT_COOLDOWN, createShootCooldown(0, 60));
+    world.addComponent(enemyId, COMP.SHOOT_COOLDOWN, createShootCooldown(0, enemyShootCd));
     world.addComponent(enemyId, COMP.AI_CTRL, createAIController('patrol'));
     world.addComponent(enemyId, COMP.RENDER, createRender('tank', colorKey, 1));
-    world.addComponent(enemyId, COMP.SPAWN_PROTECT, createSpawnProtect(60));
+    world.addComponent(enemyId, COMP.SPAWN_PROTECT, createSpawnProtect(enemyProtectFrames));
 
-    stage.enemiesSpawned++;
-    stage.enemyCount++;
-    console.log(`[StageSystem] 👾 敌人已生成! | ID: ${enemyId} | 颜色: ${colorKey} | 出生点: (${spawn.x}, ${spawn.y})`);
+    env.enemiesSpawned++;
+    env.enemyCount++;
 }
 
 // ====== 内部函数：复活玩家坦克 ======
-function respawnPlayer(world, playerData) {
-    // 动态查找玩家实体ID（通过 PLAYER_INPUT 组件）
+function respawnPlayer(world, env) {
     const playerId = findUniqueEntity(world, COMP.PLAYER_INPUT);
 
     if (!playerId) {
-        console.warn('[StageSystem] ⚠️ 复活失败：找不到玩家实体（无 PLAYER_INPUT 组件）');
-        // 创建全新的玩家实体
         const newPlayerId = world.createEntity();
-        _initPlayerComponents(world, newPlayerId, playerData);
-        console.log(`[StageSystem] ❤️ 玩家重新创建 | 新ID: ${newPlayerId}`);
+        _initPlayerComponents(world, newPlayerId, env);
         return;
     }
 
-    // 销毁旧组件并重建（保留同一实体ID，让外部引用不失效）
     world.destroyEntity(playerId);
-    _initPlayerComponents(world, playerId, playerData);
-    console.log(`[StageSystem] ❤️ 玩家已复活 | ID: ${playerId}`);
+    _initPlayerComponents(world, playerId, env);
 }
 
 /** 初始化/重建玩家的完整组件套件 */
-function _initPlayerComponents(world, playerId, playerData) {
-    const spawn = PLAYER_SPAWNS[0];
+function _initPlayerComponents(world, playerId, env) {
+    const spawn = env.config.spawn.PLAYER[0];
+    const playerShootCd = env.config.combat.PLAYER_SHOOT_CD;
+    const playerProtectFrames = env.config.combat.SPAWN_PROTECT_PLAYER;
 
     world.addComponent(playerId, COMP.POSITION, createPosition(spawn.x, spawn.y));
-    world.addComponent(playerId, COMP.DIRECTION, createDirection(0));                      // 默认朝上
+    world.addComponent(playerId, COMP.DIRECTION, createDirection(0));
     world.addComponent(playerId, COMP.VELOCITY, createVelocity());
     world.addComponent(playerId, COMP.COLLISION, createCollision(7, 7));
     world.addComponent(playerId, COMP.TANK_TYPE, createTankType('player', 'player'));
-    world.addComponent(playerId, COMP.HP, createHP(1));
-    world.addComponent(playerId, COMP.SHOOT_COOLDOWN, createShootCooldown(0, 20));
-    world.addComponent(playerId, COMP.PLAYER_INPUT, createPlayerInput());                  // 重新注册输入
+    world.addComponent(playerId, COMP.HP, createHP(env.config.combat.PLAYER_HP));
+    world.addComponent(playerId, COMP.SHOOT_COOLDOWN, createShootCooldown(0, playerShootCd));
+    world.addComponent(playerId, COMP.PLAYER_INPUT, createPlayerInput());
     world.addComponent(playerId, COMP.RENDER, createRender('tank', 'player', 1));
-    world.addComponent(playerId, COMP.SPAWN_PROTECT, createSpawnProtect(120));             // 2秒无敌时间
+    world.addComponent(playerId, COMP.SPAWN_PROTECT, createSpawnProtect(playerProtectFrames));
     world.addComponent(playerId, COMP.SCORE, createScore());
 
-    // 恢复累计分数
     const scoreComp = world.getComponent(playerId, COMP.SCORE);
-    if (scoreComp) {
-        scoreComp.value = playerData.score || 0;
-    }
+    if (scoreComp) scoreComp.value = env.playerScore || 0;
 }
