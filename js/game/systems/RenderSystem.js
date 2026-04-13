@@ -1,27 +1,24 @@
 // =============================================================================
 // 渲染系统 - 将所有游戏实体绘制到 Canvas 画布上
 // Natural Order: 作为最后一个执行的系统，读取所有 Position + Render 组件输出到屏幕
-// 通过 Environment 访问地图数据和配置参数
+// ★ 所有配置通过 env.config 访问 (Rule 6)，不直接导入 GameConfig
 // =============================================================================
 
 import { COMP } from '../Constants.js';
-import { TANK_COLORS, TILE_TYPE } from '../GameConfig.js';
-
-// ====== 瓦片类型本地常量映射（从 TILE_TYPE 提取，避免运行时查找）======
-const _TT = TILE_TYPE;  // 短别名，减少代码冗余
-
-const { EMPTY, GRASS } = _TT;
 
 // 创建渲染系统（工厂函数，接收 canvas 2D上下文和缩放倍数）
 export function createRenderSystem(ctx, scale = 2) {
-    return function RenderSystem(world, _env) {  // ★ 规范签名: (world, env)
-        const env = world.env;
+    return function RenderSystem(world, env) {  // ★ 规范签名: (world, env) — 直接使用 env 参数 (Rule 6)
         const TILE_SIZE = env.config.map.TILE_SIZE;
         const MAP_W = env.config.map.MAP_W;
         const MAP_H = env.config.map.MAP_H;
         const W = MAP_W * TILE_SIZE * scale;
         const H = MAP_H * TILE_SIZE * scale;
         const ts = TILE_SIZE * scale;
+
+        // ★ 从 env.config 读取瓦片类型和颜色表（Rule 6: 不直接导入 GameConfig）
+        const TT = env.config.tile;
+        const TANK_COLORS = env.config.colors;
 
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, W, H);
@@ -32,8 +29,8 @@ export function createRenderSystem(ctx, scale = 2) {
             for (let y = 0; y < MAP_H; y++) {
                 for (let x = 0; x < MAP_W; x++) {
                     const tile = mapData[y][x];
-                    if (tile === EMPTY) continue;
-                    drawTile(ctx, x * ts, y * ts, ts, tile);
+                    if (tile === TT.EMPTY) continue;
+                    drawTile(ctx, x * ts, y * ts, ts, tile, TT);
                 }
             }
         }
@@ -63,7 +60,7 @@ export function createRenderSystem(ctx, scale = 2) {
             const mapData = env.mapData;
             for (let y = 0; y < MAP_H; y++) {
                 for (let x = 0; x < MAP_W; x++) {
-                    if (mapData[y][x] === GRASS) {
+                    if (mapData[y][x] === TT.GRASS) {
                         grassTiles.push({ x: x * ts, y: y * ts });
                     }
                 }
@@ -73,7 +70,7 @@ export function createRenderSystem(ctx, scale = 2) {
         // ==================== 4. 绘制地面层实体 ====================
         for (const item of renderList) {
             if (item.render.type === 'tank') {
-                drawTank(ctx, item, scale);
+                drawTank(ctx, item, scale, TANK_COLORS);
             } else if (item.render.type === 'bullet') {
                 drawBullet(ctx, item.pos, item.dir, scale);
             } else if (item.render.type === 'explosion') {
@@ -83,7 +80,7 @@ export function createRenderSystem(ctx, scale = 2) {
 
         // ==================== 5. 绘制草地层 ====================
         for (const gt of grassTiles) {
-            drawTile(ctx, gt.x, gt.y, ts, GRASS);
+            drawTile(ctx, gt.x, gt.y, ts, TT.GRASS, TT);
         }
 
         // ==================== 6. 绘制 HUD 状态栏 ====================
@@ -92,9 +89,9 @@ export function createRenderSystem(ctx, scale = 2) {
 }
 
 // ====== 绘制单个地图瓦片 ======
-function drawTile(ctx, x, y, size, tileType) {
+function drawTile(ctx, x, y, size, tileType, TT) {
     switch (tileType) {
-        case _TT.BRICK:
+        case TT.BRICK:
             // ---- 砖墙: 棕色底 + 深色砖缝纹理 ----
             ctx.fillStyle = '#8B4513';       // 深棕色基底
             ctx.fillRect(x, y, size, size);
@@ -116,7 +113,7 @@ function drawTile(ctx, x, y, size, tileType) {
             ctx.stroke();
             break;
 
-        case _TT.STEEL:
+        case TT.STEEL:
             // ---- 钢墙: 银灰色金属质感 + 十字高光 ----
             ctx.fillStyle = '#A0A0A0';       // 基底灰
             ctx.fillRect(x, y, size, size);
@@ -127,7 +124,7 @@ function drawTile(ctx, x, y, size, tileType) {
             ctx.fillRect(x, y + size / 2 - 1, size, 2);
             break;
 
-        case _TT.WATER:
+        case TT.WATER:
             // ---- 水域: 深蓝色 + 波纹线条动画效果 ----
             ctx.fillStyle = '#1a3a5c';       // 深蓝色水面
             ctx.fillRect(x, y, size, size);
@@ -138,7 +135,7 @@ function drawTile(ctx, x, y, size, tileType) {
             }
             break;
 
-        case _TT.GRASS:
+        case TT.GRASS:
             // ---- 草地: 深绿色 + 竖条纹纹理 ----
             ctx.fillStyle = '#2d5a1e';       // 深绿底层
             ctx.fillRect(x, y, size, size);
@@ -149,7 +146,7 @@ function drawTile(ctx, x, y, size, tileType) {
             }
             break;
 
-        case _TT.ICE:
+        case TT.ICE:
             // ---- 冰面: 浅蓝色 + 方块高光（光滑反光感）----
             ctx.fillStyle = '#b0d4f1';       // 冰蓝底色
             ctx.fillRect(x, y, size, size);
@@ -159,7 +156,7 @@ function drawTile(ctx, x, y, size, tileType) {
             ctx.fillRect(x + size / 2 + 1, y + size / 2 + 1, size / 2 - 3, size / 2 - 3);
             break;
 
-        case _TT.BASE:
+        case TT.BASE:
             // ---- 基地(老鹰): 金色图标表示存活状态 ----
             ctx.fillStyle = '#555555';       // 深灰基座
             ctx.fillRect(x, y, size, size);
@@ -169,7 +166,7 @@ function drawTile(ctx, x, y, size, tileType) {
             ctx.fillRect(x + size * 0.35, y + size * 0.35, size * 0.3, size * 0.3);
             break;
 
-        case _TT.BASE_DEAD:
+        case TT.BASE_DEAD:
             // ---- 已毁基地: 暗灰色表示被摧毁 ----
             ctx.fillStyle = '#555555';       // 基座不变
             ctx.fillRect(x, y, size, size);
@@ -180,7 +177,7 @@ function drawTile(ctx, x, y, size, tileType) {
 }
 
 // ====== 绘制坦克 ======
-function drawTank(ctx, item, scale) {
+function drawTank(ctx, item, scale, TANK_COLORS) {
     const { pos, dir, tankType, render, spawnProtect } = item;
     if (!dir || !tankType) return;
 

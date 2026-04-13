@@ -6,8 +6,7 @@
 
 import { COMP } from '../Constants.js';
 
-export function AISystem(world, _env) {  // ★ 规范签名: (world, env)
-    const env = world.env;
+export function AISystem(world, env) {  // ★ 规范签名: (world, env) — 直接使用 env 参数 (Rule 6)
     if (!env || env.state !== 'playing') return;
 
     // ★ 所有配置通过 env.config 访问 (Rule 6)

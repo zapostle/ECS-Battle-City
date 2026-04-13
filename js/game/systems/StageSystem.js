@@ -21,8 +21,7 @@ function findUniqueEntity(world, compType) {
     return null;
 }
 
-export function StageSystem(world, _env) {  // ★ 规范签名: (world, env)
-    const env = world.env;
+export function StageSystem(world, env) {  // ★ 规范签名: (world, env) — 直接使用 env 参数 (Rule 6)
     if (!env || env.state !== 'playing') return;
 
     const playerEntityId = findUniqueEntity(world, COMP.PLAYER_INPUT);
@@ -86,14 +85,16 @@ export function StageSystem(world, _env) {  // ★ 规范签名: (world, env)
         if (render.flash > 0) render.flash--;
     }
 
-    // ==================== 7. 清理已标记销毁的实体 ====================
+    // ==================== 7. 清理已标记销毁的实体（Destroy 事件组件管道化）====================
+    // Natural Order Rule 2: 事件组件消费后立即移除 — Add(DamageSystem等) → Process(本系统) → Remove
     const toRemove = [];
     for (const entityId of world.getEntitiesWith(COMP.DESTROYED)) {
         if (entityId === playerEntityId) continue;  // 跳过玩家实体
         toRemove.push(entityId);
     }
     for (const id of toRemove) {
-        world.destroyEntity(id);
+        world.removeComponent(id, COMP.DESTROYED);  // ★ 消费后移除事件组件（Rule 2）
+        world.destroyEntity(id);                     // 然后延迟销毁实体
     }
 }
 

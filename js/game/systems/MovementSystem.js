@@ -9,8 +9,7 @@
 
 import { COMP } from '../Constants.js';
 
-export function MovementSystem(world, _env) {  // ★ 规范签名: (world, env)
-    const env = world.env;
+export function MovementSystem(world, env) {  // ★ 规范签名: (world, env) — 直接使用 env 参数 (Rule 6)
     // ★ DIR_VEC 通过 env.config 访问 (Rule 6)
     const DIR_VEC = env.config.dirVec;
     const TILE = env.config.map.TILE;

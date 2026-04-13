@@ -48,8 +48,7 @@ function collidesWithMap(mapData, cx, cy, halfW, halfH, isBullet = false, cfg) {
 }
 
 // ====== 碰撞系统主函数 ======
-export function CollisionSystem(world, _env) {  // ★ 规范签名: (world, env)
-    const env = world.env;
+export function CollisionSystem(world, env) {  // ★ 规范签名: (world, env) — 直接使用 env 参数 (Rule 6)
     const mapData = env.mapData;
     if (!mapData) return;
 

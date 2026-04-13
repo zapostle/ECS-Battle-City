@@ -8,9 +8,8 @@ import { COMP } from '../Constants.js';
 
 // 创建输入系统（工厂函数，接收外部管理的 keyState 对象）
 export function createInputSystem(keyState) {
-    return function InputSystem(world, _env) {  // ★ 规范签名: (world, env)
-        // ★ DIR 通过 env.config 访问 (Rule 6)
-        const DIR = world.env.config.dir;
+    return function InputSystem(world, env) {  // ★ 规范签名: (world, env) — 直接使用 env 参数 (Rule 6)
+        const DIR = env.config.dir;
         // 遍历所有拥有 PlayerInput 组件的实体（即玩家）
         for (const entityId of world.getEntitiesWith(COMP.PLAYER_INPUT)) {
             const input = world.getComponent(entityId, COMP.PLAYER_INPUT);

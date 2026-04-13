@@ -8,8 +8,7 @@
 
 import { COMP } from '../Constants.js';
 
-export function DamageSystem(world, _env) {  // ★ 规范签名: (world, env)
-    const env = world.env;
+export function DamageSystem(world, env) {  // ★ 规范签名: (world, env) — 直接使用 env 参数 (Rule 6)
     if (!env || env.state !== 'playing') return;
 
     const KILL_SCORE = env.config.combat.KILL_SCORE;
