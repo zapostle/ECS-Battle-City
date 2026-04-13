@@ -15,6 +15,9 @@ export function ShootSystem(world, env) {  // ★ 规范签名: (world, env) —
 
     // ==================== 处理玩家的射击请求 ====================
     for (const entityId of world.getEntitiesWith(COMP.PLAYER_INPUT)) {
+        // 跳过已标记销毁的实体
+        if (world.hasComponent(entityId, COMP.DESTROYED)) continue;
+
         const input = world.getComponent(entityId, COMP.PLAYER_INPUT);
         const shootCd = world.getComponent(entityId, COMP.SHOOT_COOLDOWN);
         const dir = world.getComponent(entityId, COMP.DIRECTION);
@@ -30,6 +33,11 @@ export function ShootSystem(world, env) {  // ★ 规范签名: (world, env) —
 
     // ==================== 处理 AI 的射击请求 ====================
     for (const entityId of world.getEntitiesWith(COMP.SHOOT_REQUEST)) {
+        // 跳过已标记销毁的实体
+        if (world.hasComponent(entityId, COMP.DESTROYED)) {
+            world.removeComponent(entityId, COMP.SHOOT_REQUEST);
+            continue;
+        }
         const dir = world.getComponent(entityId, COMP.DIRECTION);
         const pos = world.getComponent(entityId, COMP.POSITION);
 

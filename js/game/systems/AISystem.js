@@ -14,6 +14,9 @@ export function AISystem(world, env) {  // ★ 规范签名: (world, env) — �
     const DIR = env.config.dir;
 
     for (const entityId of world.getEntitiesWith(COMP.AI_CTRL)) {
+        // 跳过已标记销毁的实体
+        if (world.hasComponent(entityId, COMP.DESTROYED)) continue;
+
         const ai = world.getComponent(entityId, COMP.AI_CTRL);
         const dirComp = world.getComponent(entityId, COMP.DIRECTION);
         const pos = world.getComponent(entityId, COMP.POSITION);

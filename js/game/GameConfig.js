@@ -90,7 +90,7 @@ export const COMBAT = {
     KILL_SCORE: 100,           // 击杀敌人得分
     SPAWN_PROTECT_PLAYER: 120, // 玩家出生保护帧数
     SPAWN_PROTECT_ENEMY: 60,   // 敌人出生保护帧数
-    RESPAWN_DELAY: 90,         // 玩家复活延迟帧数
+    RESPAWN_DELAY: 30,         // 玩家复活延迟帧数
     ENEMY_SPAWN_INTERVAL: 180, // 敌人生成间隔帧数
     MAX_ENEMIES_ON_SCREEN: 4,  // 场上最大敌人数
     MAX_ENEMIES_PER_STAGE: 20, // 每关最大敌人数

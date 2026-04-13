@@ -12,6 +12,9 @@ export function createInputSystem(keyState) {
         const DIR = env.config.dir;
         // 遍历所有拥有 PlayerInput 组件的实体（即玩家）
         for (const entityId of world.getEntitiesWith(COMP.PLAYER_INPUT)) {
+            // 跳过已标记销毁的实体
+            if (world.hasComponent(entityId, COMP.DESTROYED)) continue;
+
             const input = world.getComponent(entityId, COMP.PLAYER_INPUT);
             const prevDir = input.dir;  // 记录上一帧的方向，用于检测方向变化
             const prevShoot = input.shoot;

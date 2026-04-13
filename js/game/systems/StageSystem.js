@@ -87,9 +87,10 @@ export function StageSystem(world, env) {  // ★ 规范签名: (world, env) —
 
     // ==================== 7. 清理已标记销毁的实体（Destroy 事件组件管道化）====================
     // Natural Order Rule 2: 事件组件消费后立即移除 — Add(DamageSystem等) → Process(本系统) → Remove
+    // ★ 玩家实体带 Destroyed 时：跳过（由步骤3的复活逻辑在 respawnTimer 归零后重建）
     const toRemove = [];
     for (const entityId of world.getEntitiesWith(COMP.DESTROYED)) {
-        if (entityId === playerEntityId) continue;  // 跳过玩家实体
+        if (entityId === playerEntityId) continue;  // 玩家由复活逻辑处理
         toRemove.push(entityId);
     }
     for (const id of toRemove) {
@@ -131,12 +132,23 @@ function respawnPlayer(world, env) {
     const playerId = findUniqueEntity(world, COMP.PLAYER_INPUT);
 
     if (!playerId) {
+        // 玩家实体已不存在（被 destroyEntity 清除），创建新实体
         const newPlayerId = world.createEntity();
         _initPlayerComponents(world, newPlayerId, env);
         return;
     }
 
-    world.destroyEntity(playerId);
+    // ★ 消费 Destroyed 事件组件（Rule 2: 事件组件消费后移除）
+    if (world.hasComponent(playerId, COMP.DESTROYED)) {
+        world.removeComponent(playerId, COMP.DESTROYED);
+    }
+
+    // 清理旧组件（重建干净状态）
+    // ★ 不调用 destroyEntity——它会在帧末 _processRemovals 中清除所有组件，导致刚添加的新组件也被删掉
+    for (const [typeName, set] of world.componentSets) {
+        if (set.contains(playerId)) set.remove(playerId);
+    }
+    // 在同一实体 ID 上重建玩家组件
     _initPlayerComponents(world, playerId, env);
 }
 
