@@ -118,3 +118,30 @@ export function createPowerUp(powerType) {
 export function createScore() {
     return { value: 0, combo: 0 };
 }
+
+// 生成计时器组件: 驱动 SpawnSystem 周期性创建实体
+// 系统不硬编码"生成什么"，而是通过 template 和 onSpawn 描述
+export function createSpawnTimer({ timer, interval, repeat = true, maxActive = 0, activeCount = 0, onSpawn = null }) {
+    return { timer, interval, repeat, maxActive, activeCount, onSpawn };
+}
+
+// 复活组件: 驱动 RespawnSystem 在倒计时归零后重建实体
+// 替代 env.respawnTimer —— 将复活状态从全局环境移到实体组件上
+// 复活模板存储在 Lives.respawnTemplate 上（闭包注入），而非此组件
+export function createRespawn(frames) {
+    return { frames };
+}
+
+// 击杀奖励组件: 声明击杀此实体后给予击杀者的分数奖励
+// DamageSystem 死亡处理时检查此组件，将奖励加到击杀者的 Score 上
+export function createKillReward(score) {
+    return { score: score || 0 };
+}
+
+// 生命数组件: 声明实体的剩余生命数
+// DamageSystem 死亡处理时检查此组件：
+//   - lives > 0 → 添加 Respawn 组件（而非直接销毁）
+//   - lives <= 0 → 彻底销毁（不再复活）
+export function createLives(lives) {
+    return { lives: lives ?? 1 };
+}

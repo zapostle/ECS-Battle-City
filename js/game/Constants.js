@@ -44,4 +44,8 @@ export const COMP = {
     EXPLOSION: 'Explosion',
     POWERUP: 'PowerUp',
     SCORE: 'Score',
+    SPAWN_TIMER: 'SpawnTimer',       // 生成计时器（驱动 SpawnSystem）
+    RESPAWN: 'Respawn',               // 复活组件（驱动 RespawnSystem）
+    KILL_REWARD: 'KillReward',       // 击杀奖励（击杀后给得分者加分）
+    LIVES: 'Lives',                   // 生命数（死亡后决定是否复活）
 };
