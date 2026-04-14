@@ -1,6 +1,8 @@
 # VS Code debug cache
 .vscode/edge-debug/
 
+.codebuddy/
+
 # OS
 .DS_Store
 Thumbs.db
