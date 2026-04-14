@@ -15,7 +15,7 @@
 
 import { COMP } from '../Constants.js';
 
-export function CleanupSystem(world, env) {
+export function CleanupSystem(world, _env) {
     const toRemove = [];
 
     for (const entityId of world.getEntitiesWith(COMP.DESTROYED)) {
@@ -28,10 +28,7 @@ export function CleanupSystem(world, env) {
     }
 
     for (const id of toRemove) {
-        // ★ 维护场上 AI 实体计数（供 HUD 显示和胜利判定）
-        if (world.hasComponent(id, COMP.AI_CTRL)) {
-            env.enemyCount = Math.max(0, (env.enemyCount || 0) - 1);
-        }
+        // ★ 不再维护 env.enemyCount — UI 层通过 WorldView.countAliveEntitiesWith(COMP.AI_CTRL) 实时统计
 
         world.removeComponent(id, COMP.DESTROYED);  // ★ 消费事件组件（Rule 2: 事件组件消费后移除）
         world.destroyEntity(id);                     // 延迟销毁实体

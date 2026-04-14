@@ -116,9 +116,14 @@ export function CollisionSystem(world, env) {  // ★ 规范签名: (world, env)
 
             if (hit.tile === BRICK) {
                 mapData[hit.ty][hit.tx] = EMPTY;
-            } else if (hit.tile === BASE) {
+            } else             if (hit.tile === BASE) {
                 mapData[hit.ty][hit.tx] = BASE_DEAD;
-                env.state = 'gameover';  // ★ 通过环境修改全局状态
+                // ★ 写入 GameState 单例组件（替代 env.state = 'gameover'）
+                const gameStateId = world.findEntity(COMP.GAME_STATE);
+                const gameState = gameStateId ? world.getComponent(gameStateId, COMP.GAME_STATE) : null;
+                if (gameState) gameState.state = 'gameover';
+                // 同步写入 env.state（兼容过渡期，后续可移除）
+                env.state = 'gameover';
             }
             continue;
         }

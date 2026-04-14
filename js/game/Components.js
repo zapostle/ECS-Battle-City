@@ -145,3 +145,10 @@ export function createKillReward(score) {
 export function createLives(lives) {
     return { lives: lives ?? 1 };
 }
+
+// 游戏状态组件: 单例组件，存储当前游戏的全局状态
+// 替代 env.state — 让 UI 层可直接从 World 查询，无需系统主动推送
+// state 值: 'playing' | 'gameover' | 'victory'
+export function createGameState(state = 'playing') {
+    return { state };
+}

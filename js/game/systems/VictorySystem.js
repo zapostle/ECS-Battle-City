@@ -15,7 +15,12 @@
 import { COMP } from '../Constants.js';
 
 export function VictorySystem(world, env) {
-    if (!env || env.state !== 'playing') return;
+    // ★ 通过 GameState 组件判断游戏状态（替代 env.state）
+    const gameStateId = world.findEntity(COMP.GAME_STATE);
+    const gameState = gameStateId ? world.getComponent(gameStateId, COMP.GAME_STATE) : null;
+    if (gameState && gameState.state !== 'playing') return;
+    // 兼容过渡期
+    if (!gameState && env.state !== 'playing') return;
 
     // 条件1：检查是否还有活跃的 SpawnTimer（仍有实体需要生成）
     let hasActiveSpawner = false;
@@ -34,6 +39,8 @@ export function VictorySystem(world, env) {
         if (world.getComponent(entityId, COMP.HP)) return;
     }
 
-    // 所有条件满足 → 胜利
+    // 所有条件满足 → 写入 GameState 单例组件（替代 env.state = 'victory'）
+    if (gameState) gameState.state = 'victory';
+    // 同步写入 env.state（兼容过渡期，后续可移除）
     env.state = 'victory';
 }

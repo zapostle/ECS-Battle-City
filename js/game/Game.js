@@ -6,9 +6,17 @@
 //   3. 注册所有游戏系统（按执行顺序）
 //   4. 运行游戏主循环（requestAnimationFrame）
 //   5. 管理游戏状态转换（标题/游戏中/通关/游戏结束）
+//
+// ★ UI-ECS 解耦设计：
+//   - ECS 系统（world.tick）只写组件，不知道 UI 存在
+//   - UI 渲染（uiRenderer.render）只读组件，不知道系统存在
+//   - WorldView 提供只读查询接口，DataChannel 提供数据订阅
+//   - 游戏状态存储在 GameState 单例组件中，UI 直接查询
 // =============================================================================
 
 import { World } from '../ecs/World.js';
+import { WorldView } from '../ecs/WorldView.js';
+import { DataChannel } from '../ecs/DataChannel.js';
 import { COMP, MAP_W, TILE_SIZE, CANVAS_TOTAL_H } from './Constants.js';
 import { LEVELS } from './Levels.js';
 import { GameConfig } from './GameConfig.js';
@@ -25,7 +33,7 @@ import { SpawnSystem } from './systems/SpawnSystem.js';
 import { CleanupSystem } from './systems/CleanupSystem.js';
 import { VictorySystem } from './systems/VictorySystem.js';
 import { RespawnSystem } from './systems/RespawnSystem.js';
-import { createRenderSystem } from './systems/RenderSystem.js';
+import { UIRenderer } from './ui/UIRenderer.js';
 
 export class Game {
     constructor(canvas) {
@@ -42,7 +50,14 @@ export class Game {
 
         this.currentLevel = 0;
         this.running = false;
-        this.gameState = 'title';
+        this.gameState = 'title';  // 外部 UI 状态: 'title' | 'playing' | 'gameover' | 'victory'
+
+        // ★ UI 渲染器（与 ECS 完全解耦，通过 WorldView 只读查询）
+        this.uiRenderer = new UIRenderer(this.ctx, this.scale);
+
+        // ★ 只读世界视图 + 数据订阅通道
+        this.worldView = null;
+        this.dataChannel = null;
     }
 
     startLevel(levelIdx = 0) {
@@ -61,10 +76,14 @@ export class Game {
         const mapData = levelData.map(row => [...row]);  // 深拷贝地图数据
 
         env.reset(this.currentLevel + 1, mapData);
-        env.playerLives = 3;
+
+        // ==================== ★ 创建 GameState 单例实体 ====================
+        // 游戏状态存储在 ECS 组件中，UI 层通过 WorldView 查询
+        const stateEntityId = this.world.createEntity();
+        this.world.addComponent(stateEntityId, COMP.GAME_STATE, Components.createGameState('playing'));
 
         // ==================== 注册所有游戏系统（按执行顺序）====================
-        // Natural Order: 系统执行顺序由组件的添加/移除自然驱动
+        // ★ 不再包含 RenderSystem — 渲染由 UIRenderer 在 tick 外独立处理
         this.world.addSystem(createInputSystem(this.keyState), 'InputSystem');
         this.world.addSystem(AISystem, 'AISystem');
         this.world.addSystem(MovementSystem, 'MovementSystem');
@@ -76,10 +95,8 @@ export class Game {
         this.world.addSystem(RespawnSystem, 'RespawnSystem');
         this.world.addSystem(CleanupSystem, 'CleanupSystem');
         this.world.addSystem(VictorySystem, 'VictorySystem');
-        this.world.addSystem(createRenderSystem(this.ctx, this.scale), 'RenderSystem');
 
         // ==================== 创建玩家坦克实体 ====================
-        // ★ 通过组件声明实体的能力，而非硬编码到系统中
         const playerId = this.world.createEntity();
         this._initPlayerComponents(this.world, playerId, env);
 
@@ -91,7 +108,6 @@ export class Game {
         window.__playerMonitor = playerMonitor;
 
         // ==================== 创建敌人生成器实体 ====================
-        // ★ 将"敌人生成"从 StageSystem 硬编码 → 变为 SpawnTimer 组件驱动
         const spawnerId = this.world.createEntity();
         const maxEnemies = env.config.combat.MAX_ENEMIES_PER_STAGE;
         const spawnInterval = env.config.combat.ENEMY_SPAWN_INTERVAL;
@@ -109,9 +125,23 @@ export class Game {
             },
         }));
 
-        // ★ 存储总生成数到 env（VictorySystem 不再依赖 env.maxEnemies）
         env.maxEnemies = maxEnemies;
         env.enemiesSpawned = 0;
+
+        // ==================== ★ 初始化 WorldView + DataChannel ====================
+        this.worldView = new WorldView(this.world);
+        this.dataChannel = new DataChannel(this.worldView);
+
+        // 订阅游戏状态变化（从 GameState 组件读取）
+        this.dataChannel.subscribe('gameState',
+            (view) => view.getGameState(),
+            (newState, oldState) => {
+                // 同步外部 UI 状态
+                if (newState === 'gameover') this.gameState = 'gameover';
+                else if (newState === 'victory') this.gameState = 'victory';
+                else if (newState === 'playing') this.gameState = 'playing';
+            }
+        );
     }
 
     /** 初始化/重建玩家的完整组件套件 */
@@ -119,6 +149,7 @@ export class Game {
         const spawn = env.config.spawn.PLAYER[0];
         const playerShootCd = env.config.combat.PLAYER_SHOOT_CD;
         const playerProtectFrames = env.config.combat.SPAWN_PROTECT_PLAYER;
+        const playerLives = env.config.combat.PLAYER_LIVES ?? 3;
 
         world.addComponent(playerId, COMP.POSITION, Components.createPosition(spawn.x, spawn.y));
         world.addComponent(playerId, COMP.DIRECTION, Components.createDirection(0));
@@ -131,39 +162,33 @@ export class Game {
         world.addComponent(playerId, COMP.RENDER, Components.createRender('tank', 'player', 1));
         world.addComponent(playerId, COMP.SPAWN_PROTECT, Components.createSpawnProtect(playerProtectFrames));
         world.addComponent(playerId, COMP.SCORE, Components.createScore());
-        // ★ 声明式组件：告知系统"此实体有3条命"和"复活后如何重建"
-        // respawnTemplate 是一个闭包函数，RespawnSystem 会在复活时调用它来重建组件
-        const gameRef = this;  // 闭包引用 Game 实例
-        world.addComponent(playerId, COMP.LIVES, Components.createLives(env.playerLives));
+        // ★ 声明式组件：告知系统"此实体有N条命"和"复活后如何重建"
+        const gameRef = this;
+        world.addComponent(playerId, COMP.LIVES, Components.createLives(playerLives));
         world.getComponent(playerId, COMP.LIVES).respawnTemplate = (world, env, entityId) => {
             gameRef._initPlayerComponents(world, entityId, env);
         };
-        world.addComponent(playerId, COMP.KILL_REWARD, Components.createKillReward(0));  // 玩家被击杀不给奖励
-
-        // 恢复已有分数
-        const scoreComp = world.getComponent(playerId, COMP.SCORE);
-        if (scoreComp && env.playerScore) scoreComp.value = env.playerScore;
+        world.addComponent(playerId, COMP.KILL_REWARD, Components.createKillReward(0));
     }
 
     tick() {
         if (this.gameState === 'title') {
-            this._drawTitle(); return;
-        }
-        if (this.gameState === 'gameover') {
-            this._drawGameOver(); return;
-        }
-        if (this.gameState === 'stageclear') {
-            this._drawStageClear(); return;
+            // 标题画面：尚无 World，直接渲染
+            this.uiRenderer.render(null, 'title');
+            return;
         }
 
+        // ==================== ECS 逻辑 tick（系统只写组件）====================
         this.world.tick();
 
-        if (this.world.env) {
-            if (this.world.env.state === 'gameover') {
-                this.gameState = 'gameover';
-            } else if (this.world.env.state === 'victory') {
-                this.gameState = 'stageclear';
-            }
+        // ==================== DataChannel 脏检测（检测组件变化）====================
+        if (this.dataChannel) {
+            this.dataChannel.tick();
+        }
+
+        // ==================== UI 渲染（通过 WorldView 只读查询）====================
+        if (this.worldView) {
+            this.uiRenderer.render(this.worldView);
         }
     }
 
@@ -184,121 +209,13 @@ export class Game {
         if (this.cleanupFn) this.cleanupFn();
     }
 
-    // ==================== UI 绘制方法 ====================
-    _drawTitle() {
-        const ctx = this.ctx;
-        const W = this.canvas.width;
-        const H = this.canvas.height;
-        const s = this.scale;
-
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, W, H);
-
-        ctx.fillStyle = '#FF4500';
-        ctx.font = `bold ${32 * s}px monospace`;
-        ctx.textAlign = 'center';
-        ctx.fillText('BATTLE CITY', W / 2, H * 0.3);
-
-        ctx.fillStyle = '#FFD700';
-        ctx.font = `${16 * s}px monospace`;
-        ctx.fillText('Natural Order ECS', W / 2, H * 0.3 + 30 * s);
-
-        this._drawTitleTank(ctx, W / 2, H * 0.5, s);
-
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = `${10 * s}px monospace`;
-        ctx.fillText('WASD / Arrow Keys: Move', W / 2, H * 0.7);
-        ctx.fillText('Space / J: Shoot', W / 2, H * 0.7 + 16 * s);
-
-        ctx.fillStyle = '#FFD700';
-        ctx.font = `bold ${12 * s}px monospace`;
-        const blink = Math.floor(Date.now() / 500) % 2;
-        if (blink) {
-            ctx.fillText('PRESS ENTER TO START', W / 2, H * 0.85);
-        }
-        ctx.textAlign = 'left';
-    }
-
-    _drawTitleTank(ctx, cx, cy, s) {
-        ctx.save();
-        ctx.translate(cx, cy);
-        const size = 20 * s;
-        ctx.fillStyle = '#FFD700';
-        ctx.fillRect(-size / 2, -size / 2, size, size);
-        ctx.fillStyle = '#B8860B';
-        ctx.fillRect(-size / 2, -size / 2, size * 0.25, size);
-        ctx.fillRect(size / 2 - size * 0.25, -size / 2, size * 0.25, size);
-        ctx.fillStyle = '#DAA520';
-        const turretSize = size * 0.4;
-        ctx.fillRect(-turretSize / 2, -turretSize / 2, turretSize, turretSize);
-        ctx.fillStyle = '#B8860B';
-        ctx.fillRect(-size * 0.07, -size / 2 - 4, size * 0.15, size / 2 + 4);
-        ctx.restore();
-    }
-
-    _drawGameOver() {
-        const ctx = this.ctx;
-        const W = this.canvas.width;
-        const H = this.canvas.height;
-        const s = this.scale;
-
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, W, H);
-
-        ctx.fillStyle = '#FF0000';
-        ctx.font = `bold ${28 * s}px monospace`;
-        ctx.textAlign = 'center';
-        ctx.fillText('GAME OVER', W / 2, H * 0.4);
-
-        const score = this.world?.env?.playerScore ?? 0;
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = `${14 * s}px monospace`;
-        ctx.fillText(`SCORE: ${score}`, W / 2, H * 0.55);
-
-        ctx.fillStyle = '#FFD700';
-        ctx.font = `${12 * s}px monospace`;
-        const blink = Math.floor(Date.now() / 500) % 2;
-        if (blink) {
-            ctx.fillText('PRESS ENTER TO RESTART', W / 2, H * 0.7);
-        }
-        ctx.textAlign = 'left';
-    }
-
-    _drawStageClear() {
-        const ctx = this.ctx;
-        const W = this.canvas.width;
-        const H = this.canvas.height;
-        const s = this.scale;
-
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, W, H);
-
-        ctx.fillStyle = '#00FF00';
-        ctx.font = `bold ${28 * s}px monospace`;
-        ctx.textAlign = 'center';
-        ctx.fillText('STAGE CLEAR!', W / 2, H * 0.4);
-
-        const level = this.world?.env?.level ?? this.currentLevel + 1;
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = `${14 * s}px monospace`;
-        ctx.fillText(`STAGE ${level} COMPLETE`, W / 2, H * 0.55);
-
-        ctx.fillStyle = '#FFD700';
-        ctx.font = `${12 * s}px monospace`;
-        const blink = Math.floor(Date.now() / 500) % 2;
-        if (blink) {
-            ctx.fillText('PRESS ENTER FOR NEXT STAGE', W / 2, H * 0.7);
-        }
-        ctx.textAlign = 'left';
-    }
-
     handleKeyPress(code) {
         if (code === 'Enter') {
             if (this.gameState === 'title') {
                 this.startLevel(0);
             } else if (this.gameState === 'gameover') {
                 this.startLevel(0);
-            } else if (this.gameState === 'stageclear') {
+            } else if (this.gameState === 'victory') {
                 const nextLevel = this.world?.env?.level ?? this.currentLevel + 1;
                 this.startLevel(nextLevel);
             }
@@ -319,10 +236,7 @@ export class Game {
 function _spawnEnemy(world, env, st) {
     const maxEnemies = env.maxEnemies;
 
-    // 检查是否已达到本关最大敌人数
     if (env.enemiesSpawned >= maxEnemies) {
-        // 所有敌人都已生成完毕，移除 SpawnTimer（不再循环）
-        // 但需要找到 spawner 实体 ID
         for (const spawnerId of world.getEntitiesWith(COMP.SPAWN_TIMER)) {
             world.removeComponent(spawnerId, COMP.SPAWN_TIMER);
         }
@@ -351,10 +265,8 @@ function _spawnEnemy(world, env, st) {
     world.addComponent(enemyId, COMP.AI_CTRL, Components.createAIController('patrol'));
     world.addComponent(enemyId, COMP.RENDER, Components.createRender('tank', colorKey, 1));
     world.addComponent(enemyId, COMP.SPAWN_PROTECT, Components.createSpawnProtect(enemyProtectFrames));
-    // ★ 声明式组件：击杀此实体给予击杀者 killScore 分
     world.addComponent(enemyId, COMP.KILL_REWARD, Components.createKillReward(killScore));
 
     env.enemiesSpawned++;
     st.activeCount++;
-    env.enemyCount = (env.enemyCount || 0) + 1;
 }

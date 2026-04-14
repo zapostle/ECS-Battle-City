@@ -83,6 +83,7 @@ export const TANK_COLORS = Object.freeze({
 // ==================== 战斗参数 ====================
 export const COMBAT = {
     PLAYER_HP: 1,              // 玩家血量（1血即死）
+    PLAYER_LIVES: 3,           // 玩家初始生命数
     ENEMY_HP: 1,               // 敌人血量
     BULLET_POWER: 1,           // 子弹威力
     PLAYER_SHOOT_CD: 20,       // 玩家射击冷却帧数

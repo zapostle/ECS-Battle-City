@@ -9,14 +9,17 @@
 //   - 击杀奖励 → 检查 KillReward 组件，给攻击者的 Score 加分
 //   - 复活逻辑 → 检查 Lives 组件，有剩余生命则添加 Respawn 组件
 //   - 场上计数 → 通过 SpawnTimer.activeCount 维护，本系统递减
-//   - 游戏结束 → 当带 Lives 的实体生命耗尽，设置 env.state = 'gameover'
+//   - 游戏结束 → 写入 GameState 单例组件（而非 env.state），UI 层从 World 查询
 // =============================================================================
 
 import { COMP } from '../Constants.js';
 import { createRespawn } from '../Components.js';
 
 export function DamageSystem(world, env) {
-    if (!env || env.state !== 'playing') return;
+    // ★ 通过 GameState 组件判断游戏状态（替代 env.state）
+    const gameStateId = world.findEntity(COMP.GAME_STATE);
+    const gameState = gameStateId ? world.getComponent(gameStateId, COMP.GAME_STATE) : null;
+    if (gameState && gameState.state !== 'playing') return;
 
     const EXPLOSION_LARGE_FRAMES = env.config.animation.EXPLOSION_LARGE_FRAMES;
     const HIT_FLASH_FRAMES = env.config.animation.HIT_FLASH_FRAMES;
@@ -70,13 +73,10 @@ export function DamageSystem(world, env) {
                 if (lives.lives > 0) {
                     // 还有剩余生命 → 添加 Respawn 组件，由 RespawnSystem 处理复活
                     world.addComponent(entityId, COMP.RESPAWN, createRespawn(RESPAWN_DELAY));
-                    // 保存分数到 env（跨复活保留）
-                    const scoreComp = world.getComponent(entityId, COMP.SCORE);
-                    if (scoreComp) env.playerScore = scoreComp.value;
                 } else {
-                    // 生命耗尽 → 游戏结束（带 Lives 的实体通常是玩家）
-                    const scoreComp = world.getComponent(entityId, COMP.SCORE);
-                    if (scoreComp) env.playerScore = scoreComp.value;
+                    // 生命耗尽 → 写入 GameState 单例组件（替代 env.state = 'gameover'）
+                    if (gameState) gameState.state = 'gameover';
+                    // 同步写入 env.state（兼容过渡期，后续可移除）
                     env.state = 'gameover';
                 }
             }
