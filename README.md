@@ -1,5 +1,8 @@
 # 🎮 Battle City — Natural Order ECS
 
+> 🤖 **Human Thought, AI Implementation** | 👨‍💻 人脑构思，AI实现  
+> *Where ideas are born in human minds and brought to life by AI code!*
+
 [中文](#中文) | [English](#english)
 
 ---
@@ -155,16 +158,7 @@ Open `http://localhost:9000` in your browser.
 | `Enter` | Start / Next Stage |
 | `L` | Debug: Entity Monitor log |
 
-## ECS vs OOP Flexibility
 
-| Feature | OOP Approach | ECS Approach |
-|---------|-------------|-------------|
-| Add "Invincible" power-up | Modify Tank class + systems, add flags | Add `Invincible` component, TimerSystem auto-handles |
-| Add "Poison" debuff | Modify HP logic + debuff manager | Add `Poison` component + `PoisonSystem` |
-| Enemies that respawn | Copy-paste or refactor base class | Give enemies `Lives` + `KillReward` components |
-| Boss with phases | Inheritance + state machine | Add `Phase` component + `PhaseTransitionSystem` |
-
-**Zero modification to existing systems** — this is the core advantage.
 
 ## Data Flow (UI-ECS Decoupling)
 
@@ -188,6 +182,11 @@ System → writes GameState component → World → WorldView → UIRenderer que
 | `env.playerLives` | `Lives.lives` via `view.getComponent()` |
 | `env.enemyCount` | `view.countAliveEntitiesWith(COMP.AI_CTRL)` |
 | `env.state` | `GameState.state` singleton component |
+
+
+## Acknowledgments
+
+Thanks to "Monkey and Huaguoshan" (猴与花果山) on Zhihu for teaching ECS architecture knowledge, which gave me new insights into ECS.
 
 ## License
 
@@ -346,16 +345,7 @@ node serve.js
 | `Enter` | 开始 / 下一关 |
 | `L` | 调试：实体监控器日志 |
 
-## ECS vs OOP 灵活性
 
-| 功能 | OOP 方式 | ECS 方式 |
-|------|---------|---------|
-| 添加"无敌"道具 | 修改 Tank 类+系统，加 flag | 加 `Invincible` 组件，TimerSystem 自动处理 |
-| 添加"中毒"debuff | 修改 HP 逻辑 + debuff 管理器 | 加 `Poison` 组件 + `PoisonSystem` |
-| 敌人也能复活 | 复制粘贴或重构基类 | 给敌人加 `Lives` + `KillReward` 组件 |
-| Boss 多阶段 | 继承 + 状态机 | 加 `Phase` 组件 + `PhaseTransitionSystem` |
-
-**对原有系统零修改** ——这就是核心优势。
 
 ## 数据流（UI-ECS 解耦）
 
@@ -379,6 +369,11 @@ System → 写 GameState 组件 → World → WorldView → UIRenderer 查询 Ga
 | `env.playerLives` | `Lives.lives`，通过 `view.getComponent()` 查询 |
 | `env.enemyCount` | `view.countAliveEntitiesWith(COMP.AI_CTRL)` 实时统计 |
 | `env.state` | `GameState.state` 单例组件 |
+
+
+## 致谢
+
+感谢知乎的“猴与花果山”老师对ECS架构知识的传授，让我对ECS有了新的认识和理解。
 
 ## 许可证
 
