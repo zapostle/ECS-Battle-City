@@ -121,8 +121,9 @@ export function createScore() {
 
 // 生成计时器组件: 驱动 SpawnSystem 周期性创建实体
 // 系统不硬编码"生成什么"，而是通过 template 和 onSpawn 描述
-export function createSpawnTimer({ timer, interval, repeat = true, maxActive = 0, activeCount = 0, onSpawn = null }) {
-    return { timer, interval, repeat, maxActive, activeCount, onSpawn };
+// ★ enemiesSpawned/maxEnemies 从 env 迁移至此 — "动态变量=组件"原则
+export function createSpawnTimer({ timer, interval, repeat = true, maxActive = 0, activeCount = 0, onSpawn = null, enemiesSpawned = 0, maxEnemies = 0 }) {
+    return { timer, interval, repeat, maxActive, activeCount, onSpawn, enemiesSpawned, maxEnemies };
 }
 
 // 复活组件: 驱动 RespawnSystem 在倒计时归零后重建实体
@@ -146,9 +147,15 @@ export function createLives(lives) {
     return { lives: lives ?? 1 };
 }
 
-// 游戏状态组件: 单例组件，存储当前游戏的全局状态
-// 替代 env.state — 让 UI 层可直接从 World 查询，无需系统主动推送
+// 游戏状态组件: 单例组件，存储当前游戏的全局运行时状态
+// 替代 env 中所有动态字段 — "动态变量=组件"原则
 // state 值: 'playing' | 'gameover' | 'victory'
-export function createGameState(state = 'playing') {
-    return { state };
+export function createGameState(state = 'playing', level = 1) {
+    return { state, level, frameCount: 0 };
+}
+
+// 游戏地图组件: 单例组件，存储运行时可变的地图数据
+// 替代 env.mapData — 地图瓦片会被子弹摧毁，是动态数据
+export function createGameMap(mapData) {
+    return { data: mapData };
 }

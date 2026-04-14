@@ -49,4 +49,5 @@ export const COMP = {
     KILL_REWARD: 'KillReward',       // 击杀奖励（击杀后给得分者加分）
     LIVES: 'Lives',                   // 生命数（死亡后决定是否复活）
     GAME_STATE: 'GameState',          // 游戏全局状态（单例组件：playing/gameover/victory）
+    GAME_MAP: 'GameMap',              // 游戏地图数据（单例组件：运行时可变瓦片数组）
 };

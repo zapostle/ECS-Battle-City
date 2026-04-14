@@ -2,25 +2,27 @@
 // 碰撞系统 - 处理所有碰撞检测逻辑
 // Natural Order: 读取当前 Position 状态，产生 DamageInfo 事件和 Destroyed 标记
 // 负责四种碰撞:
-//   1. 坦克 vs 地图瓦片（回滚位置）
-//   2. 坦克 vs 坦克（互相推开）
-//   3. 子弹 vs 地图瓦片（摧毁子弹+破坏瓦片）
-//   4. 子弹 vs 坦克（产生伤害事件）
+//   1. 坦克 vs 地图瓦片（回滚位置）— 规则15
+//   2. 坦克 vs 坦克（互相推开）— 规则16
+//   3. 子弹 vs 地图瓦片（摧毁子弹+破坏瓦片）— 规则17
+//   4. 子弹 vs 坦克（产生伤害事件）— 规则18
+//
+// ★ 重构：
+//   - 地图数据从 GameMap 组件读取（替代 env.mapData）
+//   - 游戏状态写入 GameState 组件（移除 env.state 兼容写入）
 // =============================================================================
 
 import { COMP } from '../Constants.js';
 
 // ====== 辅助函数：检测矩形区域是否与地图中的固体瓦片重叠 ======
-// ★ 配置通过参数注入 (Rule 6)，不直接导入配置模块
 function collidesWithMap(mapData, cx, cy, halfW, halfH, isBullet = false, cfg) {
     const TILE = cfg.map.TILE;
     const MAP_W = cfg.map.MAP_W;
     const MAP_H = cfg.map.MAP_H;
     const { BRICK, STEEL, WATER, BASE, BASE_DEAD } = cfg.tile;
 
-    // 计算矩形的四条边界的瓦片坐标范围
     const left = cx - halfW;
-    const right = cx + halfW - 0.01;   // 微小偏移防止边界精度问题
+    const right = cx + halfW - 0.01;
     const top = cy - halfH;
     const bottom = cy + halfH - 0.01;
 
@@ -48,11 +50,13 @@ function collidesWithMap(mapData, cx, cy, halfW, halfH, isBullet = false, cfg) {
 }
 
 // ====== 碰撞系统主函数 ======
-export function CollisionSystem(world, env) {  // ★ 规范签名: (world, env) — 直接使用 env 参数 (Rule 6)
-    const mapData = env.mapData;
-    if (!mapData) return;
+export function CollisionSystem(world, env) {
+    // ★ 从 GameMap 组件读取地图数据（替代 env.mapData）
+    const mapEntityId = world.findEntity(COMP.GAME_MAP);
+    const gameMap = mapEntityId ? world.getComponent(mapEntityId, COMP.GAME_MAP) : null;
+    if (!gameMap || !gameMap.data) return;
+    const mapData = gameMap.data;
 
-    // ★ 所有配置通过 env.config 访问 (Rule 6)
     const { BRICK, BASE, BASE_DEAD } = env.config.tile;
     const EMPTY = env.config.tile.EMPTY;
 
@@ -67,7 +71,7 @@ export function CollisionSystem(world, env) {  // ★ 规范签名: (world, env)
         tanks.push({ id: entityId, pos, col, dir, prevX: pos.prevX ?? pos.x, prevY: pos.prevY ?? pos.y });
     }
 
-    // ==================== 1. 坦克 vs 地图碰撞检测 ====================
+    // ==================== 1. 规则15: 坦克 vs 地图碰撞检测 ====================
     for (const tank of tanks) {
         const hit = collidesWithMap(mapData, tank.pos.x, tank.pos.y, tank.col.halfW, tank.col.halfH, false, env.config);
         if (hit) {
@@ -76,7 +80,7 @@ export function CollisionSystem(world, env) {  // ★ 规范签名: (world, env)
         }
     }
 
-    // ==================== 2. 坦克 vs 坦克碰撞检测 ====================
+    // ==================== 2. 规则16: 坦克 vs 坦克碰撞检测 ====================
     for (let i = 0; i < tanks.length; i++) {
         for (let j = i + 1; j < tanks.length; j++) {
             const a = tanks[i], b = tanks[j];
@@ -99,14 +103,14 @@ export function CollisionSystem(world, env) {  // ★ 规范签名: (world, env)
         }
     }
 
-    // ==================== 3. 子弹 vs 地图 & 子弹 vs 坦克 碰撞检测 ====================
+    // ==================== 3. 规则17+18: 子弹 vs 地图 & 子弹 vs 坦克 ====================
     for (const bulletId of world.getEntitiesWith(COMP.BULLET)) {
         const bPos = world.getComponent(bulletId, COMP.POSITION);
         const bBullet = world.getComponent(bulletId, COMP.BULLET);
 
         if (!bPos || !bBullet) continue;
 
-        // ---- 3a. 子弹 vs 地图碰撞 ----
+        // ---- 规则17: 子弹 vs 地图碰撞 ----
         const hit = collidesWithMap(mapData, bPos.x, bPos.y, 3, 3, true, env.config);
         if (hit) {
             world.addComponent(bulletId, COMP.DESTROYED, {});
@@ -116,19 +120,17 @@ export function CollisionSystem(world, env) {  // ★ 规范签名: (world, env)
 
             if (hit.tile === BRICK) {
                 mapData[hit.ty][hit.tx] = EMPTY;
-            } else             if (hit.tile === BASE) {
+            } else if (hit.tile === BASE) {
                 mapData[hit.ty][hit.tx] = BASE_DEAD;
                 // ★ 写入 GameState 单例组件（替代 env.state = 'gameover'）
                 const gameStateId = world.findEntity(COMP.GAME_STATE);
                 const gameState = gameStateId ? world.getComponent(gameStateId, COMP.GAME_STATE) : null;
                 if (gameState) gameState.state = 'gameover';
-                // 同步写入 env.state（兼容过渡期，后续可移除）
-                env.state = 'gameover';
             }
             continue;
         }
 
-        // ---- 3b. 子弹 vs 坦克碰撞 ----
+        // ---- 规则18: 子弹 vs 坦克碰撞 → DamageInfo 事件 ----
         for (const tank of tanks) {
             if (tank.id === bBullet.ownerId) continue;
             const sp = world.getComponent(tank.id, COMP.SPAWN_PROTECT);

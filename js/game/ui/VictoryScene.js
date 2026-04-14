@@ -1,21 +1,15 @@
 // =============================================================================
-// 胜利画面 - 从 Game._drawStageClear() 拆出，纯 UI 渲染逻辑
-// 只从 WorldView 读取数据，不写入任何 ECS 组件
+// 胜利画面 - 纯 UI 渲染逻辑
+// 只从 WorldView 读取组件数据，不写入任何 ECS 组件
+// ★ 关卡号从 GameState 组件查询（替代 env.level）
 // =============================================================================
 
 export class VictoryScene {
-    /**
-     * @param {CanvasRenderingContext2D} ctx
-     * @param {number} scale
-     */
     constructor(ctx, scale) {
         this.ctx = ctx;
         this.scale = scale;
     }
 
-    /**
-     * @param {import('../../ecs/WorldView.js').WorldView} view - 只读世界视图
-     */
     render(view) {
         const ctx = this.ctx;
         const s = this.scale;
@@ -30,8 +24,8 @@ export class VictoryScene {
         ctx.textAlign = 'center';
         ctx.fillText('STAGE CLEAR!', W / 2, H * 0.4);
 
-        // ★ 从 WorldView 查询关卡（替代 env.level）
-        const level = view.env?.level ?? 1;
+        // ★ 从 GameState 组件查询关卡号（替代 env.level）
+        const level = view.getLevel();
 
         ctx.fillStyle = '#FFFFFF';
         ctx.font = `${14 * s}px monospace`;

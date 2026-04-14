@@ -7,11 +7,13 @@
 //   4. 运行游戏主循环（requestAnimationFrame）
 //   5. 管理游戏状态转换（标题/游戏中/通关/游戏结束）
 //
-// ★ UI-ECS 解耦设计：
-//   - ECS 系统（world.tick）只写组件，不知道 UI 存在
-//   - UI 渲染（uiRenderer.render）只读组件，不知道系统存在
+// ★ "动态变量=组件"原则：
+//   - 所有动态变化的值都在 ECS 组件中，env 只保留 config/providers
+//   - GameState 组件：state + level + frameCount（替代 env.state/level/frameCount）
+//   - GameMap 组件：地图数据（替代 env.mapData）
+//   - SpawnTimer 组件：enemiesSpawned/maxEnemies（替代 env 同名字段）
+//   - Score/Lives 组件：玩家分数/生命（替代 env.playerScore/playerLives）
 //   - WorldView 提供只读查询接口，DataChannel 提供数据订阅
-//   - 游戏状态存储在 GameState 单例组件中，UI 直接查询
 // =============================================================================
 
 import { World } from '../ecs/World.js';
@@ -41,7 +43,6 @@ export class Game {
         this.ctx = canvas.getContext('2d');
         this.scale = 2;
 
-        // 设置 Canvas 实际像素尺寸
         canvas.width = MAP_W * TILE_SIZE * this.scale;
         canvas.height = CANVAS_TOTAL_H * this.scale;
 
@@ -52,10 +53,7 @@ export class Game {
         this.running = false;
         this.gameState = 'title';  // 外部 UI 状态: 'title' | 'playing' | 'gameover' | 'victory'
 
-        // ★ UI 渲染器（与 ECS 完全解耦，通过 WorldView 只读查询）
         this.uiRenderer = new UIRenderer(this.ctx, this.scale);
-
-        // ★ 只读世界视图 + 数据订阅通道
         this.worldView = null;
         this.dataChannel = null;
     }
@@ -71,19 +69,18 @@ export class Game {
         this.world = new World(GameConfig);
         const env = this.world.env;
 
-        // ==================== 初始化环境运行时状态 ====================
+        // ==================== ★ 创建 GameState 单例实体 ====================
+        const levelNum = this.currentLevel + 1;
+        const stateEntityId = this.world.createEntity();
+        this.world.addComponent(stateEntityId, COMP.GAME_STATE, Components.createGameState('playing', levelNum));
+
+        // ==================== ★ 创建 GameMap 单例实体 ====================
         const levelData = LEVELS[this.currentLevel % LEVELS.length];
         const mapData = levelData.map(row => [...row]);  // 深拷贝地图数据
-
-        env.reset(this.currentLevel + 1, mapData);
-
-        // ==================== ★ 创建 GameState 单例实体 ====================
-        // 游戏状态存储在 ECS 组件中，UI 层通过 WorldView 查询
-        const stateEntityId = this.world.createEntity();
-        this.world.addComponent(stateEntityId, COMP.GAME_STATE, Components.createGameState('playing'));
+        const mapEntityId = this.world.createEntity();
+        this.world.addComponent(mapEntityId, COMP.GAME_MAP, Components.createGameMap(mapData));
 
         // ==================== 注册所有游戏系统（按执行顺序）====================
-        // ★ 不再包含 RenderSystem — 渲染由 UIRenderer 在 tick 外独立处理
         this.world.addSystem(createInputSystem(this.keyState), 'InputSystem');
         this.world.addSystem(AISystem, 'AISystem');
         this.world.addSystem(MovementSystem, 'MovementSystem');
@@ -108,12 +105,12 @@ export class Game {
         window.__playerMonitor = playerMonitor;
 
         // ==================== 创建敌人生成器实体 ====================
-        const spawnerId = this.world.createEntity();
         const maxEnemies = env.config.combat.MAX_ENEMIES_PER_STAGE;
         const spawnInterval = env.config.combat.ENEMY_SPAWN_INTERVAL;
         const firstSpawnDelay = env.config.combat.FIRST_SPAWN_DELAY;
         const maxOnScreen = env.config.combat.MAX_ENEMIES_ON_SCREEN;
 
+        const spawnerId = this.world.createEntity();
         this.world.addComponent(spawnerId, COMP.SPAWN_TIMER, Components.createSpawnTimer({
             timer: firstSpawnDelay,
             interval: spawnInterval,
@@ -123,20 +120,17 @@ export class Game {
             onSpawn: (world, env, st) => {
                 _spawnEnemy(world, env, st);
             },
+            enemiesSpawned: 0,     // ★ 从 env 迁移到组件
+            maxEnemies: maxEnemies, // ★ 从 env 迁移到组件
         }));
-
-        env.maxEnemies = maxEnemies;
-        env.enemiesSpawned = 0;
 
         // ==================== ★ 初始化 WorldView + DataChannel ====================
         this.worldView = new WorldView(this.world);
         this.dataChannel = new DataChannel(this.worldView);
 
-        // 订阅游戏状态变化（从 GameState 组件读取）
         this.dataChannel.subscribe('gameState',
             (view) => view.getGameState(),
             (newState, oldState) => {
-                // 同步外部 UI 状态
                 if (newState === 'gameover') this.gameState = 'gameover';
                 else if (newState === 'victory') this.gameState = 'victory';
                 else if (newState === 'playing') this.gameState = 'playing';
@@ -162,7 +156,6 @@ export class Game {
         world.addComponent(playerId, COMP.RENDER, Components.createRender('tank', 'player', 1));
         world.addComponent(playerId, COMP.SPAWN_PROTECT, Components.createSpawnProtect(playerProtectFrames));
         world.addComponent(playerId, COMP.SCORE, Components.createScore());
-        // ★ 声明式组件：告知系统"此实体有N条命"和"复活后如何重建"
         const gameRef = this;
         world.addComponent(playerId, COMP.LIVES, Components.createLives(playerLives));
         world.getComponent(playerId, COMP.LIVES).respawnTemplate = (world, env, entityId) => {
@@ -173,20 +166,24 @@ export class Game {
 
     tick() {
         if (this.gameState === 'title') {
-            // 标题画面：尚无 World，直接渲染
             this.uiRenderer.render(null, 'title');
             return;
         }
 
-        // ==================== ECS 逻辑 tick（系统只写组件）====================
+        // ==================== ECS 逻辑 tick ====================
         this.world.tick();
 
-        // ==================== DataChannel 脏检测（检测组件变化）====================
+        // ★ 同步帧计数到 GameState 组件（替代 env.frameCount 递增）
+        const gameStateId = this.world.findEntity(COMP.GAME_STATE);
+        const gameState = gameStateId ? this.world.getComponent(gameStateId, COMP.GAME_STATE) : null;
+        if (gameState) gameState.frameCount = this.world.env.frameCount;
+
+        // ==================== DataChannel 脏检测 ====================
         if (this.dataChannel) {
             this.dataChannel.tick();
         }
 
-        // ==================== UI 渲染（通过 WorldView 只读查询）====================
+        // ==================== UI 渲染 ====================
         if (this.worldView) {
             this.uiRenderer.render(this.worldView);
         }
@@ -216,7 +213,8 @@ export class Game {
             } else if (this.gameState === 'gameover') {
                 this.startLevel(0);
             } else if (this.gameState === 'victory') {
-                const nextLevel = this.world?.env?.level ?? this.currentLevel + 1;
+                // ★ 从 GameState 组件读取关卡号（替代 env.level）
+                const nextLevel = this.worldView?.getLevel() ?? this.currentLevel + 1;
                 this.startLevel(nextLevel);
             }
         }
@@ -231,25 +229,18 @@ export class Game {
 
 // =============================================================================
 // 模块级函数：敌人生成（由 SpawnTimer.onSpawn 调用）
+// ★ enemiesSpawned 计数从 SpawnTimer 组件维护（替代 env.enemiesSpawned++）
+// ★ maxEnemies 达到上限由 SpawnSystem 自动处理
 // =============================================================================
 
 function _spawnEnemy(world, env, st) {
-    const maxEnemies = env.maxEnemies;
-
-    if (env.enemiesSpawned >= maxEnemies) {
-        for (const spawnerId of world.getEntitiesWith(COMP.SPAWN_TIMER)) {
-            world.removeComponent(spawnerId, COMP.SPAWN_TIMER);
-        }
-        return;
-    }
-
     const spawns = env.config.spawn.ENEMY;
-    const spawnIdx = env.enemiesSpawned % spawns.length;
+    const spawnIdx = st.enemiesSpawned % spawns.length;
     const spawn = spawns[spawnIdx];
     const enemyId = world.createEntity();
 
     const colorKeys = ['enemy1', 'enemy2', 'enemy3', 'enemy4'];
-    const colorKey = colorKeys[env.enemiesSpawned % colorKeys.length];
+    const colorKey = colorKeys[st.enemiesSpawned % colorKeys.length];
 
     const enemyShootCd = env.config.combat.ENEMY_SHOOT_CD;
     const enemyProtectFrames = env.config.combat.SPAWN_PROTECT_ENEMY;
@@ -267,6 +258,6 @@ function _spawnEnemy(world, env, st) {
     world.addComponent(enemyId, COMP.SPAWN_PROTECT, Components.createSpawnProtect(enemyProtectFrames));
     world.addComponent(enemyId, COMP.KILL_REWARD, Components.createKillReward(killScore));
 
-    env.enemiesSpawned++;
+    st.enemiesSpawned++;  // ★ 组件内维护，替代 env.enemiesSpawned++
     st.activeCount++;
 }

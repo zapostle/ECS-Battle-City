@@ -1,10 +1,17 @@
 // =============================================================================
 // 移动系统 - 应用速度/方向到位置
 // Natural Order: 消费 InputSystem/AISystem 产生的方向数据，更新 Position 组件
-// 设计策略:
-//   Direction = 纯朝向（渲染用，默认向上）
-//   是否移动 = 由 InputSystem.dir / AI_CTRL.moveDir 显式驱动
-//   无输入时 shouldMove=false → 坦克不动，即使 Direction 仍为"向上"
+//
+// ★ 规则精化：
+//   规则7: Input.dir / AI_CTRL.moveDir → Direction.dir（同步朝向）
+//   规则8: dir + speed → Position.x/y 更新
+//   规则9: 边界检测 → Position 钳制
+//
+// ★ 关键：规则7"同步朝向"由本系统完成
+//   - AISystem 只写 AI_CTRL.moveDir（决策）
+//   - 本系统将 moveDir 同步到 Direction.dir（执行）
+//   - InputSystem 只写 PlayerInput.dir（决策）
+//   - 本系统将 input.dir 同步到 Direction.dir（执行）
 // =============================================================================
 
 import { COMP } from '../Constants.js';

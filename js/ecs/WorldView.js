@@ -2,6 +2,10 @@
 // WorldView - World 的只读视图接口
 // UI 层通过 WorldView 查询 ECS 数据，无法修改任何组件或实体
 // 设计原则：单向数据流 — System 写组件 → World 存储 → WorldView 只读 → UI 渲染
+//
+// ★ "动态变量=组件"原则：
+//   所有动态数据都在组件中，WorldView 提供便捷查询方法
+//   UI 不再依赖 env 的任何动态字段
 // =============================================================================
 
 export class WorldView {
@@ -44,9 +48,9 @@ export class WorldView {
         return this._world.findEntity(typeName);
     }
 
-    // ==================== 环境只读访问 ====================
+    // ==================== 环境只读访问（仅 config/providers）====================
 
-    /** 获取 Environment 引用（配置、服务等只读数据） */
+    /** 获取 Environment 引用（只有 config/providers，无动态游戏数据） */
     get env() {
         return this._world.env;
     }
@@ -69,12 +73,41 @@ export class WorldView {
         return count;
     }
 
-    /** 查询游戏状态（从 GameState 单例实体读取） */
+    // ==================== 单例组件便捷查询 ====================
+
+    /** 查询游戏状态（从 GameState 单例组件读取） */
     getGameState() {
         const stateId = this._world.findEntity('GameState');
         if (stateId) {
             return this._world.getComponent(stateId, 'GameState')?.state ?? 'playing';
         }
         return 'playing';
+    }
+
+    /** 查询关卡号（从 GameState 单例组件读取，替代 env.level） */
+    getLevel() {
+        const stateId = this._world.findEntity('GameState');
+        if (stateId) {
+            return this._world.getComponent(stateId, 'GameState')?.level ?? 1;
+        }
+        return 1;
+    }
+
+    /** 查询地图数据（从 GameMap 单例组件读取，替代 env.mapData） */
+    getMapData() {
+        const mapId = this._world.findEntity('GameMap');
+        if (mapId) {
+            return this._world.getComponent(mapId, 'GameMap')?.data ?? null;
+        }
+        return null;
+    }
+
+    /** 查询帧计数（从 GameState 单例组件读取，替代 env.frameCount） */
+    getFrameCount() {
+        const stateId = this._world.findEntity('GameState');
+        if (stateId) {
+            return this._world.getComponent(stateId, 'GameState')?.frameCount ?? 0;
+        }
+        return 0;
     }
 }

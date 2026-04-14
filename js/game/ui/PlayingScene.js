@@ -1,30 +1,27 @@
 // =============================================================================
-// 游戏画面 - 从 RenderSystem 拆出，纯 UI 渲染逻辑
+// 游戏画面 - 纯 UI 渲染逻辑
 // 只从 WorldView 读取组件数据，不写入任何 ECS 组件
 // 包含：地图渲染、实体渲染、HUD 状态栏
+//
+// ★ "动态变量=组件"原则：
+//   - 地图数据从 GameMap 组件查询（替代 env.mapData）
+//   - 关卡号从 GameState 组件查询（替代 env.level）
+//   - 只读 env.config（静态配置）
 // =============================================================================
 
 import { COMP } from '../Constants.js';
 
 export class PlayingScene {
-    /**
-     * @param {CanvasRenderingContext2D} ctx
-     * @param {number} scale
-     */
     constructor(ctx, scale) {
         this.ctx = ctx;
         this.scale = scale;
     }
 
-    /**
-     * 渲染游戏画面
-     * @param {import('../../ecs/WorldView.js').WorldView} view - 只读世界视图
-     */
     render(view) {
         const ctx = this.ctx;
         const s = this.scale;
         const env = view.env;
-        const world = view._world;  // 需要访问原始 world 进行迭代器遍历
+        const world = view._world;
 
         const TILE_SIZE = env.config.map.TILE_SIZE;
         const MAP_W = env.config.map.MAP_W;
@@ -40,8 +37,9 @@ export class PlayingScene {
         ctx.fillRect(0, 0, W, H);
 
         // ==================== 1. 绘制地图瓦片 ====================
-        if (env && env.mapData) {
-            const mapData = env.mapData;
+        // ★ 从 GameMap 组件读取地图数据（替代 env.mapData）
+        const mapData = view.getMapData();
+        if (mapData) {
             for (let y = 0; y < MAP_H; y++) {
                 for (let x = 0; x < MAP_W; x++) {
                     const tile = mapData[y][x];
@@ -72,8 +70,7 @@ export class PlayingScene {
 
         // ==================== 3. 预收集草地块位置 ====================
         const grassTiles = [];
-        if (env && env.mapData) {
-            const mapData = env.mapData;
+        if (mapData) {
             for (let y = 0; y < MAP_H; y++) {
                 for (let x = 0; x < MAP_W; x++) {
                     if (mapData[y][x] === TT.GRASS) {
@@ -103,9 +100,6 @@ export class PlayingScene {
         this._drawHUD(view, W, s);
     }
 
-    /**
-     * 绘制 HUD — 从 WorldView 查询数据，不依赖 env 的 UI 冗余字段
-     */
     _drawHUD(view, canvasW, scale) {
         const ctx = this.ctx;
         const env = view.env;
@@ -115,12 +109,9 @@ export class PlayingScene {
         const TILE_SIZE = env.config.map.TILE_SIZE;
         const barY = MAP_H * TILE_SIZE * s;
 
-        // ★ 从 WorldView 查询玩家数据（替代 env.playerScore / env.playerLives）
         const playerId = view.findEntity(COMP.PLAYER_INPUT);
         const score = playerId ? view.getComponent(playerId, COMP.SCORE) : null;
         const lives = playerId ? view.getComponent(playerId, COMP.LIVES) : null;
-
-        // ★ 从 WorldView 统计存活敌人数量（替代 env.enemyCount）
         const enemyCount = view.countAliveEntitiesWith(COMP.AI_CTRL);
 
         ctx.fillStyle = '#333333';
@@ -144,13 +135,13 @@ export class PlayingScene {
             }
         }
 
+        // ★ 从 GameState 组件读取关卡号（替代 env.level）
         ctx.fillStyle = '#FFFFFF';
         ctx.fillText(`ENEMY: ${enemyCount}`, 200 * s, barY + 14 * s);
-        ctx.fillText(`STAGE ${env.level}`, 200 * s, barY + 30 * s);
+        ctx.fillText(`STAGE ${view.getLevel()}`, 200 * s, barY + 30 * s);
     }
 }
 
-// ====== 绘制单个地图瓦片 ======
 function drawTile(ctx, x, y, size, tileType, TT) {
     switch (tileType) {
         case TT.BRICK:
@@ -171,7 +162,6 @@ function drawTile(ctx, x, y, size, tileType, TT) {
             ctx.lineWidth = 1;
             ctx.stroke();
             break;
-
         case TT.STEEL:
             ctx.fillStyle = '#A0A0A0';
             ctx.fillRect(x, y, size, size);
@@ -181,7 +171,6 @@ function drawTile(ctx, x, y, size, tileType, TT) {
             ctx.fillRect(x + size / 2 - 1, y, 2, size);
             ctx.fillRect(x, y + size / 2 - 1, size, 2);
             break;
-
         case TT.WATER:
             ctx.fillStyle = '#1a3a5c';
             ctx.fillRect(x, y, size, size);
@@ -191,7 +180,6 @@ function drawTile(ctx, x, y, size, tileType, TT) {
                 ctx.fillRect(x, waveY, size, 2);
             }
             break;
-
         case TT.GRASS:
             ctx.fillStyle = '#2d5a1e';
             ctx.fillRect(x, y, size, size);
@@ -201,7 +189,6 @@ function drawTile(ctx, x, y, size, tileType, TT) {
                 ctx.fillRect(gx + 1, y, 2, size);
             }
             break;
-
         case TT.ICE:
             ctx.fillStyle = '#b0d4f1';
             ctx.fillRect(x, y, size, size);
@@ -209,7 +196,6 @@ function drawTile(ctx, x, y, size, tileType, TT) {
             ctx.fillRect(x + 2, y + 2, size / 2 - 2, size / 2 - 2);
             ctx.fillRect(x + size / 2 + 1, y + size / 2 + 1, size / 2 - 3, size / 2 - 3);
             break;
-
         case TT.BASE:
             ctx.fillStyle = '#555555';
             ctx.fillRect(x, y, size, size);
@@ -218,7 +204,6 @@ function drawTile(ctx, x, y, size, tileType, TT) {
             ctx.fillStyle = '#FF8C00';
             ctx.fillRect(x + size * 0.35, y + size * 0.35, size * 0.3, size * 0.3);
             break;
-
         case TT.BASE_DEAD:
             ctx.fillStyle = '#555555';
             ctx.fillRect(x, y, size, size);
@@ -228,7 +213,6 @@ function drawTile(ctx, x, y, size, tileType, TT) {
     }
 }
 
-// ====== 绘制坦克 ======
 function drawTank(ctx, item, scale, TANK_COLORS) {
     const { pos, dir, tankType, render, spawnProtect } = item;
     if (!dir || !tankType) return;
@@ -262,7 +246,6 @@ function drawTank(ctx, item, scale, TANK_COLORS) {
     ctx.rotate(dir.dir * Math.PI / 2);
 
     const half = size / 2;
-
     ctx.fillStyle = color;
     ctx.fillRect(-half, -half, size, size);
 
@@ -290,7 +273,6 @@ function drawTank(ctx, item, scale, TANK_COLORS) {
     ctx.restore();
 }
 
-// ====== 绘制子弹 ======
 function drawBullet(ctx, pos, dir, scale) {
     const s = scale;
     const size = 4 * s;
@@ -300,7 +282,6 @@ function drawBullet(ctx, pos, dir, scale) {
     ctx.fillRect(pos.x * s - size / 4, pos.y * s - size / 4, size / 2, size / 2);
 }
 
-// ====== 绘制爆炸效果 ======
 function drawExplosion(ctx, pos, explosion, scale) {
     const s = scale;
     const progress = explosion.timer / explosion.maxTimer;
@@ -333,7 +314,6 @@ function drawExplosion(ctx, pos, explosion, scale) {
     }
 }
 
-// ====== 辅助函数：将颜色变暗 ======
 function darkenColor(hex, factor) {
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);

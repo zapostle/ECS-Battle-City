@@ -2,20 +2,24 @@
 // 射击系统 - 处理玩家和AI的射击请求，管理子弹的生成与飞行
 // Natural Order: 当 ShootRequest 或 PlayerInput.shoot 存在时创建子弹实体
 // 执行顺序: 在 MovementSystem 之后、CollisionSystem 之前
+//
+// ★ 规则精化：
+//   规则10: Input.shoot + CD就绪 → 创建子弹实体
+//   规则11: ShootRequest存在 → 创建子弹实体
+//   规则12: Bullet.Position += 方向×速度
+//   规则13: 子弹出界 → Destroyed
+//   规则14: ShootCooldown.cooldown--
+//   ★ 移除无关的 mapData 检查 — 子弹飞行不依赖地图数据
 // =============================================================================
 
 import { COMP } from '../Constants.js';
 import { createPosition, createDirection, createVelocity, createCollision, createBullet, createRender } from '../Components.js';
 
-export function ShootSystem(world, env) {  // ★ 规范签名: (world, env) — 直接使用 env 参数 (Rule 6)
-    // ★ DIR_VEC 通过 env.config 访问 (Rule 6)
+export function ShootSystem(world, env) {
     const DIR_VEC = env.config.dirVec;
-    const mapData = env.mapData;
-    if (!mapData) return;
 
-    // ==================== 处理玩家的射击请求 ====================
+    // ==================== 规则10: 处理玩家的射击请求 ====================
     for (const entityId of world.getEntitiesWith(COMP.PLAYER_INPUT)) {
-        // 跳过已标记销毁的实体
         if (world.hasComponent(entityId, COMP.DESTROYED)) continue;
 
         const input = world.getComponent(entityId, COMP.PLAYER_INPUT);
@@ -31,9 +35,8 @@ export function ShootSystem(world, env) {  // ★ 规范签名: (world, env) —
         spawnBullet(world, entityId, dir.dir, pos.x, pos.y, DIR_VEC);
     }
 
-    // ==================== 处理 AI 的射击请求 ====================
+    // ==================== 规则11: 处理 AI 的射击请求 ====================
     for (const entityId of world.getEntitiesWith(COMP.SHOOT_REQUEST)) {
-        // 跳过已标记销毁的实体
         if (world.hasComponent(entityId, COMP.DESTROYED)) {
             world.removeComponent(entityId, COMP.SHOOT_REQUEST);
             continue;
@@ -47,7 +50,7 @@ export function ShootSystem(world, env) {  // ★ 规范签名: (world, env) —
         world.removeComponent(entityId, COMP.SHOOT_REQUEST);
     }
 
-    // ==================== 移动所有子弹 ====================
+    // ==================== 规则12+13: 移动所有子弹 + 边界检测 ====================
     const bulletSpeed = env.config.speed.BULLET;
     const MAP_W = env.config.map.MAP_W;
     const MAP_H = env.config.map.MAP_H;
@@ -65,13 +68,13 @@ export function ShootSystem(world, env) {  // ★ 规范签名: (world, env) —
         pos.x += vec[0] * bulletSpeed;
         pos.y += vec[1] * bulletSpeed;
 
-        // 边界检查：飞出地图则标记销毁
+        // 规则13: 边界检查——飞出地图则标记销毁
         if (pos.x < 0 || pos.x > gameW || pos.y < 0 || pos.y > gameH) {
             world.addComponent(bulletId, COMP.DESTROYED, {});
         }
     }
 
-    // ==================== 更新所有射击冷却计时器 ====================
+    // ==================== 规则14: 更新所有射击冷却计时器 ====================
     for (const entityId of world.getEntitiesWith(COMP.SHOOT_COOLDOWN)) {
         const cd = world.getComponent(entityId, COMP.SHOOT_COOLDOWN);
         if (cd.cooldown > 0) cd.cooldown--;

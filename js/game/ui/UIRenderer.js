@@ -4,8 +4,8 @@
 // 设计原则：
 //   - 不注册为 ECS 系统，在 world.tick() 外独立调用
 //   - 通过 WorldView 查询组件数据，不直接修改任何 ECS 状态
-//   - 通过 DataChannel 订阅数据变化（可选，用于增量更新场景）
 //   - 场景路由：根据 GameState 组件决定渲染哪个画面
+//   - ★ 不再回退到 env.state — 游戏状态完全由 GameState 组件管理
 // =============================================================================
 
 import { COMP } from '../Constants.js';
@@ -15,10 +15,6 @@ import { GameOverScene } from './GameOverScene.js';
 import { VictoryScene } from './VictoryScene.js';
 
 export class UIRenderer {
-    /**
-     * @param {CanvasRenderingContext2D} ctx
-     * @param {number} scale
-     */
     constructor(ctx, scale) {
         this.ctx = ctx;
         this.scale = scale;
@@ -45,18 +41,15 @@ export class UIRenderer {
     }
 
     /**
-     * 从 World 中查询游戏状态（优先级：GameState 组件 > env.state）
-     * @param {import('../../ecs/WorldView.js').WorldView} view
-     * @returns {string}
+     * 从 GameState 组件查询游戏状态
+     * ★ 不再回退到 env.state — 游戏状态完全由组件管理
      */
     _getGameState(view) {
-        // 优先查询 GameState 单例组件
         const stateId = view.findEntity(COMP.GAME_STATE);
         if (stateId) {
             const gs = view.getComponent(stateId, COMP.GAME_STATE);
             if (gs) return gs.state;
         }
-        // 回退到 env.state（兼容过渡期）
-        return view.env?.state ?? 'playing';
+        return 'playing';
     }
 }

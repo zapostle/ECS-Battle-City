@@ -2,15 +2,13 @@
 // Environment - 环境容器（Resources / Singleton Component）
 // Natural Order ECS 中的"环境"概念：
 //   存储不属于任何特定实体、但所有系统可见的全局信息。
-//   三层结构：
-//     1. config — 静态参数，只读（速度/尺寸/颜色等）
-//     2. state  — 运行时全局状态（关卡进度、帧时间等）
-//     3. providers — 服务访问点（随机数生成器、日志接口等）
-//
-// ★ UI-ECS 解耦原则：
-//   - UI 专用数据（playerLives, playerScore, enemyCount）不再存放在此
-//   - 这些数据由 ECS 组件提供，UI 层通过 WorldView 查询
-//   - env 只保留 ECS 系统运行必需的全局状态
+//   ★ "动态变量=组件"原则：
+//     所有动态变化的值（level/state/mapData/enemiesSpawned/maxEnemies）
+//     已迁移至对应的 ECS 组件中，env 不再持有任何可变游戏数据。
+//   保留的内容：
+//     1. config — 静态只读参数（速度/尺寸/颜色等），不可变
+//     2. providers — 服务访问点（随机数生成器等），无状态
+//     3. frameCount/deltaTime — 帧时间状态，ECS 引擎运行时必需
 // =============================================================================
 
 export class Environment {
@@ -22,28 +20,11 @@ export class Environment {
         /** @type {Object} 静态游戏配置（速度/尺寸/颜色等）*/
         this.config = config || {};
 
-        // ==================== 2. 运行时状态（可变） ====================
-
-        // ---- 关卡状态 ----
-        /** @type {number} 当前关卡数（从1开始）*/
-        this.level = 1;
-        /** @type {string} 游戏阶段: 'playing' | 'victory' | 'gameover'
-         *  ★ 兼容过渡期保留，新代码应通过 GameState 组件查询 */
-        this.state = 'playing';
-
-        // ---- 帧时间状态 (ECS 标准运行时数据) ----
+        // ==================== 2. 帧时间状态（ECS 引擎运行时必需，非游戏逻辑数据）====================
         /** @type {number} 当前帧索引（从0开始递增，用于调试/动画同步）*/
         this.frameCount = 0;
         /** @type {number} 距离上一帧的时间差（毫秒），默认60FPS=16.67ms */
         this.deltaTime = 1000 / 60;
-        /** @type {number} 已生成的敌人总数 */
-        this.enemiesSpawned = 0;
-        /** @type {number} 每关最大敌人生成数 */
-        this.maxEnemies = 20;
-
-        // ---- 地图数据（运行时可被修改，如砖墙被摧毁）----
-        /** @type {number[][]} 26x26 二维瓦片数组 */
-        this.mapData = null;
 
         // ==================== 3. 服务访问点（providers）====================
         // 遵循 Natural Order ECS Rule 6: 所有外部依赖通过 Environment 注入
@@ -81,17 +62,5 @@ export class Environment {
             val = val[key];
         }
         return val !== undefined ? val : fallback;
-    }
-
-    /**
-     * 重置环境到初始状态（用于切换关卡）
-     * @param {number} level - 新关卡编号
-     * @param {number[][]} mapData - 新地图数据（深拷贝）
-     */
-    reset(level, mapData) {
-        this.level = level;
-        this.state = 'playing';
-        this.enemiesSpawned = 0;
-        this.mapData = mapData;
     }
 }
