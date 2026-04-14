@@ -30,10 +30,11 @@ export const COLLISION_SIZE = {
 };
 
 // ==================== 移动速度（每帧像素数）====================
+// ★ 30fps 帧率下速度 ×4，等效于原 120fps（双tick@60fps）的体验
 export const SPEED = {
-    PLAYER: 1.2,   // 玩家移动速度
-    ENEMY: 0.6,    // 敌人移动速度（比玩家慢）
-    BULLET: 3,     // 子弹飞行速度
+    PLAYER: 4.8,   // 玩家移动速度（原1.2 × 4）
+    ENEMY: 2.4,    // 敌人移动速度（原0.6 × 4）
+    BULLET: 12,    // 子弹飞行速度（原3 × 4）
 };
 
 // ==================== 方向枚举 ====================
@@ -81,37 +82,40 @@ export const TANK_COLORS = Object.freeze({
 });
 
 // ==================== 战斗参数 ====================
+// ★ 帧数参数÷4（原按120fps设计，现30fps基准），最小值1
 export const COMBAT = {
     PLAYER_HP: 1,              // 玩家血量（1血即死）
     PLAYER_LIVES: 3,           // 玩家初始生命数
     ENEMY_HP: 1,               // 敌人血量
     BULLET_POWER: 1,           // 子弹威力
-    PLAYER_SHOOT_CD: 20,       // 玩家射击冷却帧数
-    ENEMY_SHOOT_CD: 60,        // 敌人射击冷却帧数
+    PLAYER_SHOOT_CD: 5,        // 玩家射击冷却帧数（原20 ÷ 4）
+    ENEMY_SHOOT_CD: 15,        // 敌人射击冷却帧数（原60 ÷ 4）
     KILL_SCORE: 100,           // 击杀敌人得分
-    SPAWN_PROTECT_PLAYER: 120, // 玩家出生保护帧数
-    SPAWN_PROTECT_ENEMY: 60,   // 敌人出生保护帧数
-    RESPAWN_DELAY: 30,         // 玩家复活延迟帧数
-    ENEMY_SPAWN_INTERVAL: 180, // 敌人生成间隔帧数
+    SPAWN_PROTECT_PLAYER: 30,  // 玩家出生保护帧数（原120 ÷ 4）
+    SPAWN_PROTECT_ENEMY: 15,   // 敌人出生保护帧数（原60 ÷ 4）
+    RESPAWN_DELAY: 8,          // 玩家复活延迟帧数（原30 ÷ 4）
+    ENEMY_SPAWN_INTERVAL: 45,  // 敌人生成间隔帧数（原180 ÷ 4）
     MAX_ENEMIES_ON_SCREEN: 4,  // 场上最大敌人数
     MAX_ENEMIES_PER_STAGE: 20, // 每关最大敌人数
-    FIRST_SPAWN_DELAY: 60,     // 首次敌人生成延迟
+    FIRST_SPAWN_DELAY: 15,     // 首次敌人生成延迟（原60 ÷ 4）
 };
 
 // ==================== AI 参数 ====================
+// ★ 帧数参数÷4（原按120fps设计，现30fps基准），概率×4补偿
 export const AI_CONFIG = {
-    THINK_MIN: 60,             // 最小思考间隔（帧）
-    THINK_MAX: 180,            // 最大思考间隔（帧）
+    THINK_MIN: 15,             // 最小思考间隔帧（原60 ÷ 4）
+    THINK_MAX: 45,             // 最大思考间隔帧（原180 ÷ 4）
     CHASE_CHANCE: 0.3,         // 追踪玩家概率
-    SHOOT_CHANCE: 0.02,        // 每帧射击概率（约2%）
+    SHOOT_CHANCE: 0.08,        // 每帧射击概率（原0.02 × 4，保持同等时间概率）
     DEFAULT_BEHAVIOR: 'patrol', // 默认行为模式
 };
 
 // ==================== 动画参数 ====================
+// ★ 帧数÷4（原按120fps设计，现30fps基准），最小值2
 export const ANIMATION = {
-    EXPLOSION_SMALL_FRAMES: 8,   // 小爆炸持续帧数
-    EXPLOSION_LARGE_FRAMES: 20,  // 大爆炸持续帧数
-    HIT_FLASH_FRAMES: 4,         // 受击闪烁帧数
+    EXPLOSION_SMALL_FRAMES: 2,   // 小爆炸持续帧数（原8 ÷ 4）
+    EXPLOSION_LARGE_FRAMES: 5,   // 大爆炸持续帧数（原20 ÷ 4）
+    HIT_FLASH_FRAMES: 1,         // 受击闪烁帧数（原4 ÷ 4）
 };
 
 // ==================== 出生点配置 ====================

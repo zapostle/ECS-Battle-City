@@ -191,9 +191,17 @@ export class Game {
 
     run() {
         this.running = true;
-        const loop = () => {
+        const FPS = 30;
+        const FRAME_INTERVAL = 1000 / FPS;
+        let lastTime = 0;
+
+        const loop = (timestamp) => {
             if (!this.running) return;
-            this.tick();
+            const elapsed = timestamp - lastTime;
+            if (elapsed >= FRAME_INTERVAL) {
+                lastTime = timestamp - (elapsed % FRAME_INTERVAL);
+                this.tick();
+            }
             requestAnimationFrame(loop);
         };
         requestAnimationFrame(loop);
