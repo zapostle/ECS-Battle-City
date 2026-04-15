@@ -7,13 +7,10 @@
 //   4. 运行游戏主循环（requestAnimationFrame）
 //   5. 管理游戏状态转换（标题/游戏中/通关/游戏结束）
 //
-// ★ "动态变量=组件"原则：
-//   - 所有动态变化的值都在 ECS 组件中，env 只保留 config/providers
-//   - GameState 组件：state + level + frameCount（替代 env.state/level/frameCount）
-//   - GameMap 组件：地图数据（替代 env.mapData）
-//   - SpawnTimer 组件：enemiesSpawned/maxEnemies（替代 env 同名字段）
-//   - Score/Lives 组件：玩家分数/生命（替代 env.playerScore/playerLives）
-//   - WorldView 提供只读查询接口，DataChannel 提供数据订阅
+// ★ "事件即实体"原则：
+//   - 动态过程（出生保护、爆炸自毁、闪烁消失、冷却归零）都是事件实体
+//   - 每个事件实体由 PendingAction 组件描述"N帧后执行动作"
+//   - PendingActionSystem 是通用引擎，不含任何业务知识
 // =============================================================================
 
 import { World } from '../ecs/World.js';
@@ -30,7 +27,7 @@ import { MovementSystem } from './systems/MovementSystem.js';
 import { ShootSystem } from './systems/ShootSystem.js';
 import { CollisionSystem } from './systems/CollisionSystem.js';
 import { DamageSystem } from './systems/DamageSystem.js';
-import { TimerSystem } from './systems/TimerSystem.js';
+import { PendingActionSystem } from './systems/PendingActionSystem.js';
 import { SpawnSystem } from './systems/SpawnSystem.js';
 import { CleanupSystem } from './systems/CleanupSystem.js';
 import { VictorySystem } from './systems/VictorySystem.js';
@@ -87,7 +84,7 @@ export class Game {
         this.world.addSystem(ShootSystem, 'ShootSystem');
         this.world.addSystem(CollisionSystem, 'CollisionSystem');
         this.world.addSystem(DamageSystem, 'DamageSystem');
-        this.world.addSystem(TimerSystem, 'TimerSystem');
+        this.world.addSystem(PendingActionSystem, 'PendingActionSystem');  // ★ 替代 TimerSystem
         this.world.addSystem(SpawnSystem, 'SpawnSystem');
         this.world.addSystem(RespawnSystem, 'RespawnSystem');
         this.world.addSystem(CleanupSystem, 'CleanupSystem');
@@ -100,6 +97,7 @@ export class Game {
         // 启动玩家监控器
         const playerMonitor = new EntityMonitor(playerId, '玩家坦克');
         playerMonitor.ignore('SpawnProtect');
+        playerMonitor.ignore('PendingAction');
         this.world.registerMonitor(playerMonitor);
         playerMonitor.start();
         window.__playerMonitor = playerMonitor;
@@ -120,8 +118,8 @@ export class Game {
             onSpawn: (world, env, st) => {
                 _spawnEnemy(world, env, st);
             },
-            enemiesSpawned: 0,     // ★ 从 env 迁移到组件
-            maxEnemies: maxEnemies, // ★ 从 env 迁移到组件
+            enemiesSpawned: 0,
+            maxEnemies: maxEnemies,
         }));
 
         // ==================== ★ 初始化 WorldView + DataChannel ====================
@@ -154,7 +152,17 @@ export class Game {
         world.addComponent(playerId, COMP.SHOOT_COOLDOWN, Components.createShootCooldown(0, playerShootCd));
         world.addComponent(playerId, COMP.PLAYER_INPUT, Components.createPlayerInput());
         world.addComponent(playerId, COMP.RENDER, Components.createRender('tank', 'player', 1));
+
+        // ★ 出生保护：创建 SpawnProtect 组件 + PendingAction 事件实体
         world.addComponent(playerId, COMP.SPAWN_PROTECT, Components.createSpawnProtect(playerProtectFrames));
+        const protectActionId = world.createEntity();
+        world.addComponent(protectActionId, COMP.PENDING_ACTION, Components.createPendingAction({
+            targetId: playerId,
+            action: 'removeComp',
+            componentType: COMP.SPAWN_PROTECT,
+            frames: playerProtectFrames,
+        }));
+
         world.addComponent(playerId, COMP.SCORE, Components.createScore());
         const gameRef = this;
         world.addComponent(playerId, COMP.LIVES, Components.createLives(playerLives));
@@ -173,7 +181,7 @@ export class Game {
         // ==================== ECS 逻辑 tick ====================
         this.world.tick();
 
-        // ★ 同步帧计数到 GameState 组件（替代 env.frameCount 递增）
+        // ★ 同步帧计数到 GameState 组件
         const gameStateId = this.world.findEntity(COMP.GAME_STATE);
         const gameState = gameStateId ? this.world.getComponent(gameStateId, COMP.GAME_STATE) : null;
         if (gameState) gameState.frameCount = this.world.env.frameCount;
@@ -221,7 +229,6 @@ export class Game {
             } else if (this.gameState === 'gameover') {
                 this.startLevel(0);
             } else if (this.gameState === 'victory') {
-                // ★ 从 GameState 组件读取关卡号（替代 env.level）
                 const nextLevel = this.worldView?.getLevel() ?? this.currentLevel + 1;
                 this.startLevel(nextLevel);
             }
@@ -237,8 +244,6 @@ export class Game {
 
 // =============================================================================
 // 模块级函数：敌人生成（由 SpawnTimer.onSpawn 调用）
-// ★ enemiesSpawned 计数从 SpawnTimer 组件维护（替代 env.enemiesSpawned++）
-// ★ maxEnemies 达到上限由 SpawnSystem 自动处理
 // =============================================================================
 
 function _spawnEnemy(world, env, st) {
@@ -263,9 +268,19 @@ function _spawnEnemy(world, env, st) {
     world.addComponent(enemyId, COMP.SHOOT_COOLDOWN, Components.createShootCooldown(0, enemyShootCd));
     world.addComponent(enemyId, COMP.AI_CTRL, Components.createAIController('patrol'));
     world.addComponent(enemyId, COMP.RENDER, Components.createRender('tank', colorKey, 1));
+
+    // ★ 出生保护：创建 SpawnProtect 组件 + PendingAction 事件实体
     world.addComponent(enemyId, COMP.SPAWN_PROTECT, Components.createSpawnProtect(enemyProtectFrames));
+    const protectActionId = world.createEntity();
+    world.addComponent(protectActionId, COMP.PENDING_ACTION, Components.createPendingAction({
+        targetId: enemyId,
+        action: 'removeComp',
+        componentType: COMP.SPAWN_PROTECT,
+        frames: enemyProtectFrames,
+    }));
+
     world.addComponent(enemyId, COMP.KILL_REWARD, Components.createKillReward(killScore));
 
-    st.enemiesSpawned++;  // ★ 组件内维护，替代 env.enemiesSpawned++
+    st.enemiesSpawned++;
     st.activeCount++;
 }

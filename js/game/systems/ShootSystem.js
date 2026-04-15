@@ -1,19 +1,14 @@
 // =============================================================================
 // 射击系统 - 处理玩家和AI的射击请求，管理子弹的生成与飞行
-// Natural Order: 当 ShootRequest 或 PlayerInput.shoot 存在时创建子弹实体
-// 执行顺序: 在 MovementSystem 之后、CollisionSystem 之前
 //
-// ★ 规则精化：
-//   规则10: Input.shoot + CD就绪 → 创建子弹实体
-//   规则11: ShootRequest存在 → 创建子弹实体
-//   规则12: Bullet.Position += 方向×速度
-//   规则13: 子弹出界 → Destroyed
-//   规则14: ShootCooldown.cooldown--
-//   ★ 移除无关的 mapData 检查 — 子弹飞行不依赖地图数据
+// ★ "事件即实体"重构：
+//   - ShootCooldown.cooldown 递减改由 PendingAction 事件实体驱动
+//   - 射击时创建 PendingAction{setField:'cooldown', value:0} 事件实体
+//   - 本系统不再自减 cooldown
 // =============================================================================
 
 import { COMP } from '../Constants.js';
-import { createPosition, createDirection, createVelocity, createCollision, createBullet, createRender } from '../Components.js';
+import { createPosition, createDirection, createVelocity, createCollision, createBullet, createRender, createPendingAction } from '../Components.js';
 
 export function ShootSystem(world, env) {
     const DIR_VEC = env.config.dirVec;
@@ -32,6 +27,18 @@ export function ShootSystem(world, env) {
 
         input.shoot = false;
         shootCd.cooldown = shootCd.maxCooldown;
+
+        // ★ 创建事件实体："冷却时间后 cooldown 归零"
+        const cdActionId = world.createEntity();
+        world.addComponent(cdActionId, COMP.PENDING_ACTION, createPendingAction({
+            targetId: entityId,
+            action: 'setField',
+            componentType: COMP.SHOOT_COOLDOWN,
+            field: 'cooldown',
+            value: 0,
+            frames: shootCd.maxCooldown,
+        }));
+
         spawnBullet(world, entityId, dir.dir, pos.x, pos.y, DIR_VEC);
     }
 
@@ -43,9 +50,24 @@ export function ShootSystem(world, env) {
         }
         const dir = world.getComponent(entityId, COMP.DIRECTION);
         const pos = world.getComponent(entityId, COMP.POSITION);
+        const shootCd = world.getComponent(entityId, COMP.SHOOT_COOLDOWN);
 
         if (dir && pos) {
             spawnBullet(world, entityId, dir.dir, pos.x, pos.y, DIR_VEC);
+
+            // ★ 创建事件实体："冷却时间后 cooldown 归零"
+            if (shootCd) {
+                shootCd.cooldown = shootCd.maxCooldown;
+                const cdActionId = world.createEntity();
+                world.addComponent(cdActionId, COMP.PENDING_ACTION, createPendingAction({
+                    targetId: entityId,
+                    action: 'setField',
+                    componentType: COMP.SHOOT_COOLDOWN,
+                    field: 'cooldown',
+                    value: 0,
+                    frames: shootCd.maxCooldown,
+                }));
+            }
         }
         world.removeComponent(entityId, COMP.SHOOT_REQUEST);
     }
@@ -74,11 +96,7 @@ export function ShootSystem(world, env) {
         }
     }
 
-    // ==================== 规则14: 更新所有射击冷却计时器 ====================
-    for (const entityId of world.getEntitiesWith(COMP.SHOOT_COOLDOWN)) {
-        const cd = world.getComponent(entityId, COMP.SHOOT_COOLDOWN);
-        if (cd.cooldown > 0) cd.cooldown--;
-    }
+    // ★ 不再自减 cooldown — 由 PendingAction 事件实体驱动
 }
 
 function spawnBullet(world, ownerId, dir, x, y, DIR_VEC) {

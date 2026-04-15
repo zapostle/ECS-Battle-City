@@ -7,12 +7,12 @@
 //   3. 子弹 vs 地图瓦片（摧毁子弹+破坏瓦片）— 规则17
 //   4. 子弹 vs 坦克（产生伤害事件）— 规则18
 //
-// ★ 重构：
-//   - 地图数据从 GameMap 组件读取（替代 env.mapData）
-//   - 游戏状态写入 GameState 组件（移除 env.state 兼容写入）
+// ★ "事件即实体"重构：
+//   - 子弹碰撞小爆炸：创建 PendingAction 事件实体驱动自毁
 // =============================================================================
 
 import { COMP } from '../Constants.js';
+import { createPendingAction } from '../Components.js';
 
 // ====== 辅助函数：检测矩形区域是否与地图中的固体瓦片重叠 ======
 function collidesWithMap(mapData, cx, cy, halfW, halfH, isBullet = false, cfg) {
@@ -51,7 +51,10 @@ function collidesWithMap(mapData, cx, cy, halfW, halfH, isBullet = false, cfg) {
 
 // ====== 碰撞系统主函数 ======
 export function CollisionSystem(world, env) {
-    // ★ 从 GameMap 组件读取地图数据（替代 env.mapData）
+    const EXPLOSION_SMALL_FRAMES = env.config.animation.EXPLOSION_SMALL_FRAMES;
+    const BULLET_HALF = env.config.collision.BULLET / 2;
+
+    // ★ 从 GameMap 组件读取地图数据
     const mapEntityId = world.findEntity(COMP.GAME_MAP);
     const gameMap = mapEntityId ? world.getComponent(mapEntityId, COMP.GAME_MAP) : null;
     if (!gameMap || !gameMap.data) return;
@@ -111,18 +114,29 @@ export function CollisionSystem(world, env) {
         if (!bPos || !bBullet) continue;
 
         // ---- 规则17: 子弹 vs 地图碰撞 ----
-        const hit = collidesWithMap(mapData, bPos.x, bPos.y, 3, 3, true, env.config);
+        const hit = collidesWithMap(mapData, bPos.x, bPos.y, BULLET_HALF, BULLET_HALF, true, env.config);
         if (hit) {
             world.addComponent(bulletId, COMP.DESTROYED, {});
+
+            // ★ 创建小爆炸实体 + PendingAction 事件实体驱动自毁
             const expId = world.createEntity();
             world.addComponent(expId, COMP.POSITION, { x: bPos.x, y: bPos.y });
-            world.addComponent(expId, COMP.EXPLOSION, { size: 1, timer: 0, maxTimer: 8 });
+            world.addComponent(expId, COMP.EXPLOSION, { size: 1, timer: 0, maxTimer: EXPLOSION_SMALL_FRAMES });
+
+            const expActionId = world.createEntity();
+            world.addComponent(expActionId, COMP.PENDING_ACTION, createPendingAction({
+                targetId: expId,
+                action: 'addComp',
+                componentType: COMP.DESTROYED,
+                value: {},
+                frames: EXPLOSION_SMALL_FRAMES,
+            }));
 
             if (hit.tile === BRICK) {
                 mapData[hit.ty][hit.tx] = EMPTY;
             } else if (hit.tile === BASE) {
                 mapData[hit.ty][hit.tx] = BASE_DEAD;
-                // ★ 写入 GameState 单例组件（替代 env.state = 'gameover'）
+                // ★ 写入 GameState 单例组件
                 const gameStateId = world.findEntity(COMP.GAME_STATE);
                 const gameState = gameStateId ? world.getComponent(gameStateId, COMP.GAME_STATE) : null;
                 if (gameState) gameState.state = 'gameover';
@@ -138,16 +152,28 @@ export function CollisionSystem(world, env) {
 
             const dx = Math.abs(bPos.x - tank.pos.x);
             const dy = Math.abs(bPos.y - tank.pos.y);
-            if (dx < tank.col.halfW + 3 && dy < tank.col.halfH + 3) {
+            if (dx < tank.col.halfW + BULLET_HALF && dy < tank.col.halfH + BULLET_HALF) {
                 world.addComponent(tank.id, COMP.DAMAGE_INFO, {
                     attackerId: bBullet.ownerId,
                     damage: bBullet.power,
                     tags: ['bullet']
                 });
                 world.addComponent(bulletId, COMP.DESTROYED, {});
+
+                // ★ 创建小爆炸实体 + PendingAction 事件实体驱动自毁
                 const expId = world.createEntity();
                 world.addComponent(expId, COMP.POSITION, { x: bPos.x, y: bPos.y });
-                world.addComponent(expId, COMP.EXPLOSION, { size: 1, timer: 0, maxTimer: 8 });
+                world.addComponent(expId, COMP.EXPLOSION, { size: 1, timer: 0, maxTimer: EXPLOSION_SMALL_FRAMES });
+
+                const expActionId = world.createEntity();
+                world.addComponent(expActionId, COMP.PENDING_ACTION, createPendingAction({
+                    targetId: expId,
+                    action: 'addComp',
+                    componentType: COMP.DESTROYED,
+                    value: {},
+                    frames: EXPLOSION_SMALL_FRAMES,
+                }));
+
                 break;
             }
         }

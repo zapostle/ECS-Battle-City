@@ -53,6 +53,7 @@ export function createDamageInfo(attackerId, damage, tags = []) {
 }
 
 // 射击冷却组件: 记录距离下次可射击的剩余帧数和最大冷却时间
+// ★ cooldown 的递减由 PendingAction 事件实体驱动，不再由系统自减
 export function createShootCooldown(frames = 0, maxCooldown = 30) {
     return { cooldown: frames, maxCooldown };
 }
@@ -78,8 +79,9 @@ export function createAIController(behavior = 'patrol') {
 // ------------------- 渲染相关组件 -------------------
 
 // 渲染信息组件: 控制实体的绘制方式
+// ★ flash 已移除——受击闪烁由 PendingAction 事件实体管理（"事件即实体"原则）
 export function createRender(type, color, zIndex = 0) {
-    return { type, color, zIndex, flash: 0 };  // flash: 受击闪烁剩余帧数
+    return { type, color, zIndex, flash: 0 };  // flash 仅由 PendingAction 读写
 }
 
 // 地图瓦片组件: 静态地图元素的类型标识
@@ -100,13 +102,40 @@ export function createDestroyed() {
 }
 
 // 出生保护组件: 刷新后的一段无敌时间（帧数）
+// ★ 倒计时由 PendingAction 事件实体驱动——"事件即实体"原则
+//   创建保护时，同时创建 PendingAction{removeComp:SPAWN_PROTECT} 事件实体
+//   事件到期 → 自动移除本组件
 export function createSpawnProtect(frames = 120) {
     return { frames };
 }
 
 // 爆炸效果组件: 视觉爆炸动画参数（size=1小爆炸, size=2大爆炸）
+// ★ 倒计时由 PendingAction 事件实体驱动——"事件即实体"原则
+//   创建爆炸时，同时创建 PendingAction{addComp:DESTROYED} 事件实体
+//   事件到期 → 自动添加 Destroyed 标记 → CleanupSystem 销毁
 export function createExplosion(size = 1) {
-    return { size, timer: 0, maxTimer: size === 1 ? 8 : 20 };  // 小爆炸8帧, 大爆炸20帧
+    return { size, timer: 0, maxTimer: size === 1 ? 2 : 5 };
+}
+
+// ★★★ 待执行动作组件: "事件即实体"核心 — 一个"N帧后对目标执行动作"的事件实体 ★★★
+//
+// 设计哲学：
+//   实体不是"个体"，实体是"事情"。
+//   "30帧后移除实体#5的 SpawnProtect 组件"——这是一件事情，它本身就是实体。
+//
+// action 类型:
+//   'removeComp'  — 从目标实体移除指定类型的组件
+//   'addComp'     — 向目标实体添加指定类型的组件（value 为组件数据）
+//   'setField'    — 设置目标实体指定组件的字段值
+//   'callback'    — 执行自定义回调函数（value 为函数）
+//
+// 示例:
+//   出生保护: PendingAction{targetId:#5, action:'removeComp', componentType:'SpawnProtect', frames:30}
+//   爆炸自毁: PendingAction{targetId:自身, action:'addComp', componentType:'Destroyed', value:{}, frames:5}
+//   受击闪烁: PendingAction{targetId:#5, action:'setField', componentType:'Render', field:'flash', value:0, frames:1}
+//   冷却归零: PendingAction{targetId:#5, action:'setField', componentType:'ShootCooldown', field:'cooldown', value:0, frames:5}
+export function createPendingAction({ targetId, action, componentType, field, value, frames }) {
+    return { targetId, action, componentType, field: field || null, value, frames };
 }
 
 // 道具组件: 地图上的能力增强道具（预留功能）
